@@ -5,9 +5,17 @@ Parameters:
   GitHubOwner:
     Type: String
     Default: hnuu785
+  GitHubOwnerId:
+    Type: String
+    Default: "136962953"
+    AllowedPattern: "^[0-9]+$"
   GitHubRepository:
     Type: String
     Default: influencer
+  GitHubRepositoryId:
+    Type: String
+    Default: "1335568905"
+    AllowedPattern: "^[0-9]+$"
   GitHubBranch:
     Type: String
     Default: main
@@ -102,7 +110,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOwner}/${GitHubRepository}:ref:refs/heads/${GitHubBranch}
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepository}@${GitHubRepositoryId}:ref:refs/heads/${GitHubBranch}
       Policies:
         - PolicyName: DeployInfluence
           PolicyDocument:
