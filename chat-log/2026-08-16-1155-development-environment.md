@@ -1185,3 +1185,26 @@
 
 - Connect Amplify Hosting to the repository and set this ECS URL as `NEXT_PUBLIC_API_URL`.
 - After Amplify assigns a frontend origin, register it as `FRONTEND_ORIGIN` and rerun the backend deployment to update CORS.
+
+## Turn 31
+
+### User (hnuu785) — 2026-08-16 17:15 KST
+
+> 프론트엔드 url은?
+
+### Codex response and decisions
+
+- Confirmed that no frontend URL exists yet because an Amplify application has not been created or connected.
+- Restated the immediate next step: create the Amplify app from the GitHub repository, select `main` and the `influence-fe` monorepo root, and set the deployed ECS URL as `NEXT_PUBLIC_API_URL`.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- `aws amplify list-apps --region ap-northeast-2` returned an empty application list.
+
+### Remaining work
+
+- Complete the one-time Amplify Hosting connection to generate the frontend URL.
