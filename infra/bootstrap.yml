@@ -99,6 +99,26 @@ Resources:
                 Condition:
                   StringEquals:
                     iam:AWSServiceName: rds.amazonaws.com
+              - Sid: DescribeKmsKeysForRds
+                Effect: Allow
+                Action: kms:DescribeKey
+                Resource: !Sub arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*
+                Condition:
+                  StringEquals:
+                    kms:CallerAccount: !Ref AWS::AccountId
+                    kms:ViaService:
+                      - !Sub rds.${AWS::Region}.${AWS::URLSuffix}
+                      - !Sub secretsmanager.${AWS::Region}.${AWS::URLSuffix}
+              - Sid: CreateKmsGrantForRds
+                Effect: Allow
+                Action: kms:CreateGrant
+                Resource: !Sub arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*
+                Condition:
+                  StringEquals:
+                    kms:CallerAccount: !Ref AWS::AccountId
+                    kms:ViaService: !Sub rds.${AWS::Region}.${AWS::URLSuffix}
+                  Bool:
+                    kms:GrantIsForAWSResource: "true"
 
   GitHubDeployRole:
     Type: AWS::IAM::Role

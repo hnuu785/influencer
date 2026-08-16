@@ -1,0 +1,213 @@
+import json
+from datetime import datetime, timezone
+
+from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from app.config import Settings
+from app.ai import minimize_personal_data
+from app.main import create_app
+
+
+def make_mvp_client(tmp_path) -> TestClient:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    settings = Settings(
+        redis_url=None,
+        storage_dir=str(tmp_path),
+        cors_origins=("http://localhost:3001",),
+    )
+    return TestClient(
+        create_app(settings, engine=engine, initialize_schema=True)
+    )
+
+
+def login(client: TestClient) -> None:
+    invite = client.post(
+        "/api/access/invite", json={"code": "STORYLOG-BETA"}
+    )
+    assert invite.status_code == 200
+    token = invite.json()["invite_token"]
+    response = client.post(
+        "/api/auth/development", json={"invite_token": token}
+    )
+    assert response.status_code == 200
+
+
+def create_story_cards(client: TestClient, text: str):
+    events = client.get("/api/calendar/events")
+    assert events.status_code == 200
+    record = client.post(
+        "/api/records",
+        data={
+            "text": text,
+            "calendar_context_json": json.dumps([events.json()[0]]),
+            "rights_confirmed": "true",
+        },
+    )
+    assert record.status_code == 200
+    record_id = record.json()["id"]
+    questions = client.get(f"/api/records/{record_id}/questions").json()
+    cards = client.post(
+        f"/api/records/{record_id}/answers",
+        json={
+            "answers": [
+                {
+                    "question": questions[0]["text"],
+                    "answer_type": "text",
+                    "answer_text": "같은 모델인데 질문 순서를 바꾸자 답이 더 구체적이었다.",
+                    "visibility": "public_ok",
+                }
+            ],
+            "profile": {
+                "topics": ["AI", "제품"],
+                "audience": "AI 도구를 쓰는 제품 실무자",
+                "tone": "담백하고 구체적으로",
+                "taboo_topics": ["과장"],
+            },
+        },
+    )
+    assert cards.status_code == 200
+    return record_id, cards.json()
+
+
+def test_invite_code_is_required(tmp_path):
+    with make_mvp_client(tmp_path) as client:
+        response = client.post("/api/access/invite", json={"code": "WRONG"})
+
+    assert response.status_code == 403
+
+
+def test_mvp_flow_generates_three_format_packages_and_export(tmp_path):
+    with make_mvp_client(tmp_path) as client:
+        login(client)
+        record_id, cards = create_story_cards(
+            client,
+            "오늘 AI 음성 에이전트를 테스트했는데 모델보다 질문 순서가 중요했다.",
+        )
+        response = client.post(
+            f"/api/records/{record_id}/story-cards/{cards[0]['id']}/decision",
+            json={"action": "approve"},
+        )
+        assert response.status_code == 200
+        packages = response.json()
+        assert [package["format"] for package in packages] == [
+            "reel",
+            "carousel",
+            "story",
+        ]
+        assert all(package["storyboard"] for package in packages)
+
+        for package in packages:
+            approved = client.post(
+                f"/api/packages/{package['id']}/decision",
+                json={"action": "approve"},
+            )
+            assert approved.status_code == 200
+
+        exported = client.post(
+            f"/api/records/{record_id}/export",
+            json={"package_ids": [package["id"] for package in packages]},
+        )
+        assert exported.status_code == 200
+        assert exported.headers["content-type"] == "application/zip"
+        assert exported.content.startswith(b"PK")
+
+        publication = client.post(
+            f"/api/records/{record_id}/publication",
+            json={
+                "format": "reel",
+                "published_url": "https://instagram.com/p/test",
+                "published_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        assert publication.status_code == 200
+        metrics = client.post(
+            f"/api/publications/{publication.json()['id']}/metrics",
+            json={
+                "elapsed_hours": 24,
+                "views": 100,
+                "likes": 12,
+                "comments": 3,
+                "shares": 2,
+                "saves": 8,
+            },
+        )
+        assert metrics.status_code == 204
+
+
+def test_unresolved_quality_warning_blocks_export(tmp_path):
+    with make_mvp_client(tmp_path) as client:
+        login(client)
+        record_id, cards = create_story_cards(
+            client,
+            "오늘 테스트 연락처는 creator@example.com이고 질문 순서를 바꿨다.",
+        )
+        packages = client.post(
+            f"/api/records/{record_id}/story-cards/{cards[0]['id']}/decision",
+            json={"action": "approve"},
+        ).json()
+        reel = packages[0]
+        assert reel["quality_issues"][0]["category"] == "privacy"
+        client.post(
+            f"/api/packages/{reel['id']}/decision", json={"action": "approve"}
+        )
+
+        blocked = client.post(
+            f"/api/records/{record_id}/export",
+            json={"package_ids": [reel["id"]]},
+        )
+        assert blocked.status_code == 409
+
+        issue_id = reel["quality_issues"][0]["id"]
+        resolved = client.post(
+            f"/api/quality-issues/{issue_id}/resolve",
+            json={"resolution": "acknowledged"},
+        )
+        assert resolved.status_code == 200
+
+        exported = client.post(
+            f"/api/records/{record_id}/export",
+            json={"package_ids": [reel["id"]]},
+        )
+        assert exported.status_code == 200
+
+
+def test_record_delete_removes_the_user_record(tmp_path):
+    with make_mvp_client(tmp_path) as client:
+        login(client)
+        record_id, _ = create_story_cards(client, "삭제할 테스트 기록")
+
+        deleted = client.delete(f"/api/records/{record_id}")
+        missing = client.get(f"/api/records/{record_id}")
+
+        assert deleted.status_code == 204
+        assert missing.status_code == 404
+
+
+def test_photo_can_be_combined_with_text_in_one_record(tmp_path):
+    with make_mvp_client(tmp_path) as client:
+        login(client)
+        response = client.post(
+            "/api/records",
+            data={
+                "text": "작업 화면을 보며 알게 된 점",
+                "calendar_context_json": "[]",
+                "rights_confirmed": "true",
+            },
+            files={"files": ("work.png", b"test-image", "image/png")},
+        )
+
+        assert response.status_code == 200
+        assert {source["type"] for source in response.json()["sources"]} == {
+            "text",
+            "photo",
+        }
+
+
+def test_direct_identifiers_are_removed_before_model_context():
+    minimized = minimize_personal_data(
+        "creator@example.com 또는 010-1234-5678로 연락"
+    )
+
+    assert "creator@example.com" not in minimized
+    assert "010-1234-5678" not in minimized

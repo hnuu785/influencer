@@ -871,3 +871,61 @@
 
 - Add least-privilege KMS permissions for RDS encryption to the CloudFormation execution role, restricted with `kms:ViaService` and AWS-resource grant conditions.
 - Update Bootstrap, delete the rolled-back Platform stack and empty retained secret, then rerun deployment.
+
+## Turn 23
+
+### User (hnuu785) — 2026-08-16 15:05 KST
+
+> 수정해줘
+
+### Codex response and decisions
+
+- Added least-privilege KMS permissions to the CloudFormation execution role: `kms:DescribeKey` only through RDS or Secrets Manager in the same account, and `kms:CreateGrant` only through RDS for AWS resources.
+- Updated the live Bootstrap stack successfully.
+- Deleted the exact `ROLLBACK_COMPLETE` Platform stack.
+- Reconfirmed that the retained Runpod placeholder had zero secret versions, then force-deleted it so the next stack creation will not encounter a name conflict.
+- Did not rerun the backend workflow or start billable application infrastructure.
+
+### Files changed
+
+- `infra/bootstrap.yml`
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- `git diff --check`: passed.
+- AWS CloudFormation template validation: passed.
+- `influence-bootstrap`: `UPDATE_COMPLETE`.
+- IAM simulation on `alias/aws/rds`: `kms:DescribeKey` and RDS `kms:CreateGrant` are allowed.
+- IAM simulation for an EC2-originated grant: `implicitDeny`.
+- `influence-platform-prod` and `influence-service-prod`: not found after cleanup.
+- Empty Runpod placeholder secret: not found after deletion.
+
+### Remaining work
+
+- Commit `infra/bootstrap.yml` without staging unrelated backend work, merge/push it to `main`, and allow the backend workflow to retry from a clean state.
+
+## Turn 24
+
+### User (hnuu785) — 2026-08-16 15:06 KST
+
+> 내가 AWS 콘솔에서 따로 작업해야하는 건 없어?
+
+### Codex response and decisions
+
+- Confirmed that no manual AWS Console action is required for the current backend retry; Bootstrap and CloudFormation now contain the necessary IAM, KMS, RDS, and service-linked-role configuration.
+- Reiterated that the next required action is repository-side: merge the Bootstrap policy update to `main` or manually rerun the backend workflow after the code is committed.
+- Kept Amplify Hosting connection and optional billing alerts as later/optional console tasks, not blockers for backend deployment.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- Relied on the immediately preceding completed checks: Bootstrap `UPDATE_COMPLETE`, required KMS operations allowed, rollback stack and empty retained secret removed.
+
+### Remaining work
+
+- Commit and merge the KMS policy change to `main`, then observe the backend deployment workflow.
+- Use the Amplify console only after the ECS API URL is available.

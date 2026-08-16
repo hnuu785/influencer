@@ -26,3 +26,21 @@
 - 변경 파일: `chat-log/2026-08-16-1438-google-login-approval.md`
 - 검증: 직전 턴에서 확인한 Google Auth Platform 및 AWS Cognito 공식 최신 문서의 설정 경로와 리디렉션 URI 요구사항을 재사용했다.
 - 남은 이슈/후속 작업: Cognito 로그인 도메인이 생성되어야 Google OAuth Client의 정확한 origin과 redirect URI를 확정할 수 있다.
+
+## 2026-08-16 15:06 KST
+
+- 사용자: hnuu785
+- 사용자 메시지: "Google Client ID\nGoogle Client Secret은\n\n클라이언트 ID와 클라이언트 보안 비밀번호 맞아?\n\n클라이언트 보안 비밀번호는 GOCSPX로 시작하는데"
+- 응답 요약 및 결정: Google 콘솔의 `클라이언트 ID`가 Google Client ID이고 `클라이언트 보안 비밀번호`가 Google Client Secret임을 확인한다. `GOCSPX-`로 시작하는 값은 일반적인 Google OAuth client secret 형식이며, 전체 값을 채팅·Git·프론트엔드 공개 환경변수에 노출하지 말고 Cognito 설정 또는 암호 저장소에만 입력하도록 경고한다.
+- 변경 파일: `chat-log/2026-08-16-1438-google-login-approval.md`
+- 검증: Google OAuth 자격 증명 명칭과 일반적인 client secret 접두 형식을 대조했다.
+- 남은 이슈/후속 작업: 발급된 ID와 Secret을 Cognito Google IdP 설정에 입력하고 로그인 흐름을 테스트한다.
+
+## 2026-08-16 15:43 KST
+
+- 사용자: hnuu785
+- 사용자 메시지: "프론트엔드 실행해서 구글 로그인 시도하니까 400 에러 뜨는데?"
+- 응답 요약 및 결정: 실행 중인 로컬 프론트엔드에서 로그인을 재현했다. 초대 코드 확인과 백엔드의 Google 인증 URL 생성은 모두 200이었고, Google 인증 화면에서 `400: redirect_uri_mismatch`가 확인됐다. 현재 구현은 Cognito가 아니라 FastAPI가 OAuth 콜백을 직접 처리하므로 Google OAuth 웹 클라이언트에 `http://localhost:8001/api/auth/google/callback`을 정확히 등록해야 한다. 선택적 Calendar 연동을 위해 `http://localhost:8001/api/calendar/callback`도 함께 등록하도록 안내한다.
+- 변경 파일: `chat-log/2026-08-16-1438-google-login-approval.md`
+- 검증: 프론트엔드 `http://localhost:3001`에서 Google 로그인을 재현했고, Google 오류 세부정보의 요청 URI가 `http://localhost:8001/api/auth/google/callback`임을 확인했다. 프론트엔드·백엔드 상태와 관련 API 응답은 정상(200)이었다.
+- 남은 이슈/후속 작업: Google Cloud Console의 해당 OAuth 2.0 웹 클라이언트에 두 로컬 콜백 URI를 추가한 뒤 로그인과 Calendar 연결을 다시 시험한다.
