@@ -90,6 +90,7 @@ jobs:
             echo "ecs_security_group=$(stack_output EcsTaskSecurityGroupId)"
             echo "database_host=$(stack_output DatabaseHost)"
             echo "database_secret_arn=$(stack_output DatabaseSecretArn)"
+            echo "artifact_bucket=$(stack_output ArtifactBucketName)"
             echo "task_execution_role_arn=$(stack_output TaskExecutionRoleArn)"
             echo "task_role_arn=$(stack_output TaskRoleArn)"
             echo "infrastructure_role_arn=$(stack_output ExpressInfrastructureRoleArn)"
@@ -135,6 +136,7 @@ jobs:
           ECS_SECURITY_GROUP: ${{ steps.platform.outputs.ecs_security_group }}
           DATABASE_HOST: ${{ steps.platform.outputs.database_host }}
           DATABASE_SECRET_ARN: ${{ steps.platform.outputs.database_secret_arn }}
+          ARTIFACT_BUCKET: ${{ steps.platform.outputs.artifact_bucket }}
           TASK_EXECUTION_ROLE_ARN: ${{ steps.platform.outputs.task_execution_role_arn }}
           TASK_ROLE_ARN: ${{ steps.platform.outputs.task_role_arn }}
           INFRASTRUCTURE_ROLE_ARN: ${{ steps.platform.outputs.infrastructure_role_arn }}
@@ -155,6 +157,7 @@ jobs:
               "EcsTaskSecurityGroupId=$ECS_SECURITY_GROUP" \
               "DatabaseHost=$DATABASE_HOST" \
               "DatabaseSecretArn=$DATABASE_SECRET_ARN" \
+              "ArtifactBucketName=$ARTIFACT_BUCKET" \
               "TaskExecutionRoleArn=$TASK_EXECUTION_ROLE_ARN" \
               "TaskRoleArn=$TASK_ROLE_ARN" \
               "ExpressInfrastructureRoleArn=$INFRASTRUCTURE_ROLE_ARN" \
@@ -172,6 +175,9 @@ jobs:
               --output text
           }
           api_url=$(stack_output ApiUrl)
+          if [[ "$api_url" != http://* && "$api_url" != https://* ]]; then
+            api_url="https://$api_url"
+          fi
           deployed_image=$(stack_output DeployedImage)
           test "$deployed_image" = "$EXPECTED_IMAGE"
           curl --fail --retry 12 --retry-all-errors --retry-delay 10 "${api_url%/}/health"

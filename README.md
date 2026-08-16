@@ -2,6 +2,26 @@
 
 스토리로그 MVP입니다. Next.js 화면은 로컬에서 실행하고, FastAPI·PostgreSQL/pgvector·Redis는 Docker Compose로 실행합니다.
 
+## 최종 제출 자료
+
+| 제출물 | 위치 | 현재 상태 |
+|---|---|---|
+| 발표자료 | [`presentation/`](presentation/) | 발표자료 저장 위치를 마련했습니다. 최종 PPT/PDF 업로드가 필요합니다. |
+| 데모/MVP | [`influence-fe/`](influence-fe/), [`influence-be/`](influence-be/), [`docker-compose.yml`](docker-compose.yml), [`infra/`](infra/) | 로컬 전체 흐름과 AWS 백엔드·DB가 동작합니다. 프론트엔드 Amplify 공개 배포는 아직 필요합니다. |
+| Codex Build Log | [`docs/codex-build-log/24_조현우_7812_log.md`](docs/codex-build-log/24_조현우_7812_log.md) | 세션 원문과 기존 대화 로그를 바탕으로 문제 → 계획 → 구현 → 오류 복구 → 검증 과정을 정리했습니다. |
+
+Build Log 파일명은 제출 규칙에 따라 `24_조현우_7812_log.md`로 작성했습니다.
+
+### MVP 구성과 실행 상태
+
+- 프론트엔드: Next.js 기반 사용자 화면과 기록 → StoryCard → 제작 패키지 → 승인·내보내기 흐름
+- 백엔드: FastAPI API, Google OAuth/Calendar 선택 연동, OpenAI/RAG 처리, 미디어 저장·내보내기
+- 데이터: PostgreSQL/pgvector, 로컬 선택형 Redis, 운영 private RDS
+- 파일 저장: 로컬 파일시스템 또는 운영 private S3 presigned upload
+- 배포: ECR 이미지와 ECS Express 백엔드, private RDS가 AWS 서울 리전에 배포됨
+- 배포 API: [프로세스 상태](https://in-799d442b12d847af94135c68132c9e3b.ecs.ap-northeast-2.on.aws/health), [DB 연결 상태](https://in-799d442b12d847af94135c68132c9e3b.ecs.ap-northeast-2.on.aws/ready), [API 문서](https://in-799d442b12d847af94135c68132c9e3b.ecs.ap-northeast-2.on.aws/docs)
+- 공개 프론트엔드: 아직 Amplify 앱이 생성되지 않았으므로 아래 로컬 실행 절차로 데모 가능
+
 ## 사전 준비
 
 - Node.js 20.9 이상
@@ -46,7 +66,9 @@ OpenAI 키가 있으면 PostgreSQL/pgvector에서 개인 승인 이력과 권리
 
 운영 환경은 Next.js를 AWS Amplify Hosting, FastAPI를 Amazon ECS Express
 Mode와 ECR, PostgreSQL을 private Amazon RDS에 배포합니다. 생성 파일을 위한
-private S3도 준비합니다. MVP의 AI 경로는 AWS RDS PostgreSQL/pgvector와
+private S3에 원본 미디어를 저장하며 브라우저는 백엔드가 발급한 제한 시간
+업로드 URL을 사용합니다. 로컬 개발은 기본적으로 `/tmp/influence-assets`를
+계속 사용합니다. MVP의 AI 경로는 AWS RDS PostgreSQL/pgvector와
 OpenAI API이며 vLLM·Runpod은 필수 의존성이 아닙니다.
 
 `main` 브랜치의 백엔드·인프라 변경은 GitHub OIDC를 사용해 자동으로

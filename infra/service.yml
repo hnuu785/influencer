@@ -21,6 +21,8 @@ Parameters:
     Type: String
   TaskRoleArn:
     Type: String
+  ArtifactBucketName:
+    Type: String
   ExpressInfrastructureRoleArn:
     Type: String
   CorsOrigins:
@@ -71,6 +73,12 @@ Resources:
             Value: require
           - Name: CORS_ORIGINS
             Value: !Ref CorsOrigins
+          - Name: STORAGE_BACKEND
+            Value: s3
+          - Name: S3_BUCKET
+            Value: !Ref ArtifactBucketName
+          - Name: S3_REGION
+            Value: !Ref AWS::Region
         Secrets:
           - Name: DB_USER
             ValueFrom: !Sub "${DatabaseSecretArn}:username::"
@@ -89,7 +97,9 @@ Resources:
 
 Outputs:
   ApiUrl:
-    Value: !GetAtt BackendService.Endpoint
+    Value: !Sub
+      - https://${Endpoint}
+      - Endpoint: !GetAtt BackendService.Endpoint
   ServiceArn:
     Value: !GetAtt BackendService.ServiceArn
   DeployedImage:

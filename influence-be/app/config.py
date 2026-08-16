@@ -24,7 +24,11 @@ class Settings:
     openai_embedding_model: str = "text-embedding-3-small"
     openai_generation_model: str = "gpt-5.6-terra"
     openai_review_model: str = "gpt-5.6-sol"
+    storage_backend: str = "local"
     storage_dir: str = "/tmp/influence-assets"
+    s3_bucket: str | None = None
+    s3_region: str = "ap-northeast-2"
+    s3_presign_ttl_seconds: int = 300
     db_host: str = "localhost"
     db_port: int = 5432
     db_name: str = "influence"
@@ -70,7 +74,13 @@ class Settings:
             openai_review_model=os.getenv(
                 "OPENAI_REVIEW_MODEL", "gpt-5.6-sol"
             ),
+            storage_backend=os.getenv("STORAGE_BACKEND", "local"),
             storage_dir=os.getenv("STORAGE_DIR", "/tmp/influence-assets"),
+            s3_bucket=os.getenv("S3_BUCKET") or None,
+            s3_region=os.getenv("S3_REGION", "ap-northeast-2"),
+            s3_presign_ttl_seconds=int(
+                os.getenv("S3_PRESIGN_TTL_SECONDS", "300")
+            ),
             db_host=os.getenv("DB_HOST", "localhost"),
             db_port=int(os.getenv("DB_PORT", "5432")),
             db_name=os.getenv("DB_NAME", "influence"),
@@ -103,6 +113,12 @@ class Settings:
     @property
     def storage_path(self) -> Path:
         return Path(self.storage_dir)
+
+    def validate_storage(self) -> None:
+        if self.storage_backend not in {"local", "s3"}:
+            raise ValueError("STORAGE_BACKEND must be one of: local, s3")
+        if self.storage_backend == "s3" and not self.s3_bucket:
+            raise ValueError("S3_BUCKET is required when STORAGE_BACKEND=s3")
 
     @property
     def database_url(self) -> URL:

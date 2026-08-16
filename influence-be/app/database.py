@@ -20,6 +20,7 @@ from app.models import (
     StoryRecord,
     User,
 )
+from app.storage import MediaStorage
 
 
 PATTERN_SEEDS = [
@@ -74,6 +75,7 @@ async def initialize_database(
 
 async def cleanup_expired_data(
     session_factory: async_sessionmaker[AsyncSession],
+    storage: MediaStorage,
     *,
     now: datetime | None = None,
 ) -> dict[str, int]:
@@ -86,8 +88,7 @@ async def cleanup_expired_data(
             )
         ).all()
         for asset in assets:
-            if asset.storage_path:
-                Path(asset.storage_path).unlink(missing_ok=True)
+            await storage.delete(asset.storage_path)
             await session.delete(asset)
         removed["assets"] = len(assets)
 
@@ -114,8 +115,7 @@ async def cleanup_expired_data(
                 )
             ).all()
             for asset in user_assets:
-                if asset.storage_path:
-                    Path(asset.storage_path).unlink(missing_ok=True)
+                await storage.delete(asset.storage_path)
             user_exports = (
                 await session.scalars(
                     select(ExportPackage).where(ExportPackage.user_id.in_(user_ids))

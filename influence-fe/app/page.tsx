@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 
-import { api, ApiError, downloadExport } from "./api";
+import { api, ApiError, downloadExport, uploadMediaFiles } from "./api";
 import type {
   CalendarEvent,
   ContentFormat,
@@ -35,6 +35,61 @@ const formatLabels: Record<ContentFormat, string> = {
   carousel: "Carousel",
   story: "Story",
 };
+
+const supportedImageTypes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+
+function validateFiles(files: File[]): string | null {
+  const photos = files.filter((file) => file.type.startsWith("image/"));
+  if (photos.some((file) => !supportedImageTypes.has(file.type))) {
+    return "사진은 JPG, PNG, WebP, GIF 형식만 추가할 수 있습니다.";
+  }
+  if (photos.length > 5) return "사진은 최대 5장입니다.";
+  if (photos.some((file) => file.size > 10 * 1024 * 1024)) {
+    return "사진은 장당 10MB까지입니다.";
+  }
+  const audioBytes = files
+    .filter((file) => file.type.startsWith("audio/"))
+    .reduce((sum, file) => sum + file.size, 0);
+  if (audioBytes > 50 * 1024 * 1024) return "음성은 합계 50MB까지입니다.";
+  const videoBytes = files
+    .filter((file) => file.type.startsWith("video/"))
+    .reduce((sum, file) => sum + file.size, 0);
+  if (videoBytes > 200 * 1024 * 1024) return "영상은 합계 200MB까지입니다.";
+  return null;
+}
+
+function FileItem({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const [previewUrl] = useState<string | null>(() =>
+    file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+  );
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  return (
+    <div className="file-item">
+      {previewUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={previewUrl} alt={`${file.name} 미리보기`} />
+      ) : (
+        <span>{file.type.startsWith("video") ? "영상" : "음성"}</span>
+      )}
+      <p>
+        <strong>{file.name}</strong>
+        <small>{(file.size / 1024 / 1024).toFixed(1)} MB · 업로드 준비됨</small>
+      </p>
+      <button type="button" onClick={onRemove} aria-label={`${file.name} 제거`}>×</button>
+    </div>
+  );
+}
 
 const steps: Array<{ id: Step; label: string; description: string }> = [
   { id: "capture", label: "기록 담기", description: "원하는 자료를 한 번에" },
@@ -234,7 +289,15 @@ function CaptureStep({
   }
 
   function addFiles(event: ChangeEvent<HTMLInputElement>) {
-    setFiles((current) => [...current, ...Array.from(event.target.files ?? [])]);
+    const selected = Array.from(event.target.files ?? []);
+    const next = [...files, ...selected];
+    const validationMessage = validateFiles(next);
+    if (validationMessage) {
+      setNotice({ tone: "error", message: validationMessage });
+    } else {
+      setFiles(next);
+      setNotice(null);
+    }
     event.target.value = "";
   }
 
@@ -254,10 +317,14 @@ function CaptureStep({
       "calendar_context_json",
       JSON.stringify(events.filter((item) => selectedEvents.includes(item.id))),
     );
-    files.forEach((file) => body.append("files", file));
     setBusy(true);
     setNotice(null);
     try {
+      const uploaded = await uploadMediaFiles(files);
+      body.append("uploaded_files_json", JSON.stringify(uploaded.uploadTokens));
+      if (uploaded.mode === "multipart") {
+        files.forEach((file) => body.append("files", file));
+      }
       const record = await api<RecordData>("/api/records", { method: "POST", body });
       const questions = await api<InterviewQuestion[]>("/api/records/" + record.id + "/questions");
       onCreated(record, questions);
@@ -292,7 +359,7 @@ function CaptureStep({
             hidden
             multiple
             type="file"
-            accept="audio/*,image/*,video/*"
+            accept="audio/*,image/jpeg,image/png,image/webp,image/gif,video/*"
             onChange={addFiles}
           />
           <button type="button" className="add-source" onClick={() => fileInput.current?.click()}>
@@ -304,11 +371,11 @@ function CaptureStep({
         {files.length > 0 && (
           <div className="file-list">
             {files.map((file, index) => (
-              <div key={file.name + index}>
-                <span>{file.type.startsWith("image") ? "사진" : file.type.startsWith("video") ? "영상" : "음성"}</span>
-                <p><strong>{file.name}</strong><small>{(file.size / 1024 / 1024).toFixed(1)} MB</small></p>
-                <button onClick={() => setFiles((list) => list.filter((_, itemIndex) => itemIndex !== index))}>×</button>
-              </div>
+              <FileItem
+                file={file}
+                key={file.name + index}
+                onRemove={() => setFiles((list) => list.filter((_, itemIndex) => itemIndex !== index))}
+              />
             ))}
             <small className="file-summary">{files.length}개 · {(totalSize / 1024 / 1024).toFixed(1)} MB</small>
           </div>
