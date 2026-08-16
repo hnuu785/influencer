@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: FastAPI on Amazon ECS Express Mode for Influence production.
+
+Parameters:
+  ImageUri:
+    Type: String
+    Description: Immutable ECR image URI including the sha256 digest.
+  ClusterName:
+    Type: String
+  PublicSubnetAId:
+    Type: AWS::EC2::Subnet::Id
+  PublicSubnetBId:
+    Type: AWS::EC2::Subnet::Id
+  EcsTaskSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  DatabaseHost:
+    Type: String
+  DatabaseSecretArn:
+    Type: String
+  TaskExecutionRoleArn:
+    Type: String
+  TaskRoleArn:
+    Type: String
+  ExpressInfrastructureRoleArn:
+    Type: String
+  CorsOrigins:
+    Type: String
+    Default: http://localhost:3001
+
+Resources:
+  BackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/ecs/influence-prod/backend
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: influence
+
+  BackendService:
+    Type: AWS::ECS::ExpressGatewayService
+    Properties:
+      Cluster: !Ref ClusterName
+      Cpu: "256"
+      Memory: "512"
+      ServiceName: influence-backend-prod
+      ExecutionRoleArn: !Ref TaskExecutionRoleArn
+      InfrastructureRoleArn: !Ref ExpressInfrastructureRoleArn
+      TaskRoleArn: !Ref TaskRoleArn
+      HealthCheckPath: /health
+      NetworkConfiguration:
+        SecurityGroups:
+          - !Ref EcsTaskSecurityGroupId
+        Subnets:
+          - !Ref PublicSubnetAId
+          - !Ref PublicSubnetBId
+      PrimaryContainer:
+        Image: !Ref ImageUri
+        ContainerPort: 8000
+        AwsLogsConfiguration:
+          LogGroup: !Ref BackendLogGroup
+          LogStreamPrefix: backend
+        Environment:
+          - Name: DB_HOST
+            Value: !Ref DatabaseHost
+          - Name: DB_PORT
+            Value: "5432"
+          - Name: DB_NAME
+            Value: influence
+          - Name: DB_SSL
+            Value: require
+          - Name: CORS_ORIGINS
+            Value: !Ref CorsOrigins
+        Secrets:
+          - Name: DB_USER
+            ValueFrom: !Sub "${DatabaseSecretArn}:username::"
+          - Name: DB_PASSWORD
+            ValueFrom: !Sub "${DatabaseSecretArn}:password::"
+      ScalingTarget:
+        MinTaskCount: 1
+        MaxTaskCount: 2
+        AutoScalingMetric: AVERAGE_CPU
+        AutoScalingTargetValue: 60
+      Tags:
+        - Key: Project
+          Value: influence
+        - Key: Environment
+          Value: prod
+
+Outputs:
+  ApiUrl:
+    Value: !GetAtt BackendService.Endpoint
+  ServiceArn:
+    Value: !GetAtt BackendService.ServiceArn
+  DeployedImage:
+    Value: !Ref ImageUri

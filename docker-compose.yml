@@ -10,7 +10,12 @@ services:
     volumes:
       - ./influence-be:/app
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-influence}:${POSTGRES_PASSWORD:-influence}@db:5432/${POSTGRES_DB:-influence}
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-influence}
+      DB_USER: ${POSTGRES_USER:-influence}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-influence}
+      DB_SSL: disable
       REDIS_URL: redis://redis:6379/0
       CORS_ORIGINS: http://localhost:3001
     depends_on:
