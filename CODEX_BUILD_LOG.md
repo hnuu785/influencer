@@ -422,7 +422,7 @@ GET  /api/influencers
 - `npm run build`: 통과
 - `git diff --check`: 통과
 - 추적된 기능 파일 변경 없음
-- `npm run dev -- --port 3001`: 실행
+- `npm run dev`: 실행(프로젝트 script가 port 3001 지정)
 - `http://127.0.0.1:3001/`: HTTP 200
 - 제공된 CSS 번들에서 네 핵심 브랜드 색상 확인
 
@@ -503,6 +503,7 @@ HikerAPI와 Bright Data 모두 한 건으로 경계를 확인했다. 공급자 �
 | `a707647` | HikerAPI를 핵심에서 분리한 서비스 방향 |
 | `590add8` | 정책 준수 public web/Bright Data 파이프라인과 AI influencer seed |
 | `932f0cf` | 58개 데이터셋·공유 ZIP·`main` 프론트 동기화 |
+| `dd94291` | HumanProof CSS 테마·원문 프롬프트·심사용 Codex Build Log |
 
 ## 9. 대표 프롬프트 인덱스
 
