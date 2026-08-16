@@ -19,6 +19,7 @@ from app.influencers import (
     InfluencerStore,
 )
 
+
 def create_app(
     settings: Settings | None = None,
     *,
