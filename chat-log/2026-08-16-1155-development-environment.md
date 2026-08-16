@@ -929,3 +929,171 @@
 
 - Commit and merge the KMS policy change to `main`, then observe the backend deployment workflow.
 - Use the Amplify console only after the ECS API URL is available.
+
+## Turn 25
+
+### User (hnuu785) — 2026-08-16 16:06 KST
+
+> Run docker build --tag influence-backend:test influence-be
+> #0 building with "default" instance using docker driver
+>
+> #1 [internal] load build definition from Dockerfile
+> #1 transferring dockerfile: 808B 0.0s done
+> #1 DONE 0.0s
+>
+> #2 [internal] load metadata for docker.io/library/python:3.13-slim
+> #2 ...
+>
+> #3 [auth] library/python:pull token for registry-1.docker.io
+> #3 DONE 0.0s
+>
+> #2 [internal] load metadata for docker.io/library/python:3.13-slim
+> #2 ERROR: failed to copy: httpReadSeeker: failed open: unexpected status code [https://registry-1.docker.io/v2/library/python/manifests/sha256:8fef26df932191825664e4957ff488c96dfe64918327634a357a55facbc994d3:](https://registry-1.docker.io/v2/library/python/manifests/sha256:8fef26df932191825664e4957ff488c96dfe64918327634a357a55facbc994d3:) 502 Bad Gateway
+> ------
+>  > [internal] load metadata for docker.io/library/python:3.13-slim:
+> ------
+> Dockerfile:1
+> --------------------
+>    1 | >>> FROM python:3.13-slim
+>    2 |
+>    3 |     ENV PYTHONDONTWRITEBYTECODE=1 \
+> --------------------
+> ERROR: failed to build: failed to solve: python:3.13-slim: failed to resolve source metadata for docker.io/library/python:3.13-slim: failed to copy: httpReadSeeker: failed open: unexpected status code [https://registry-1.docker.io/v2/library/python/manifests/sha256:8fef26df932191825664e4957ff488c96dfe64918327634a357a55facbc994d3:](https://registry-1.docker.io/v2/library/python/manifests/sha256:8fef26df932191825664e4957ff488c96dfe64918327634a357a55facbc994d3:) 502 Bad Gateway
+> Error: Process completed with exit code 1.
+>
+> main 브랜치에 올렸는데 CI 실패했어.
+
+### Codex response and decisions
+
+- Diagnosed the CI failure as a transient Docker Hub `502 Bad Gateway` while resolving the official `python:3.13-slim` image, not an application or Dockerfile failure.
+- Confirmed Docker's official status page currently reports the registry operational, so recommended rerunning only the failed CI job.
+- Distinguished the independent deployment workflow from CI: the AWS Platform stack is actively creating, so advised against launching a duplicate backend deployment.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- Docker status currently reports Docker Hub Registry operational.
+- `influence-platform-prod`: `CREATE_IN_PROGRESS`.
+- Recent CloudFormation events show successful network/IAM resources and the RDS database in `CREATE_IN_PROGRESS`, with no new failure event.
+- `influence-service-prod` is not yet created because Platform creation is still underway.
+
+### Remaining work
+
+- Use `Re-run failed jobs` on the CI run to retry the transient base-image pull.
+- Let the existing `Deploy backend` run continue without starting a duplicate, then inspect its final result and API URL.
+
+## Turn 26
+
+### User (hnuu785) — 2026-08-16 16:17 KST
+
+> Run cors_origins="${FRONTEND_ORIGIN:-http://localhost:3001}"
+>   cors_origins="${FRONTEND_ORIGIN:-http://localhost:3001}"
+>   aws cloudformation deploy \
+>     --region "$AWS_REGION" \
+>     --stack-name "$SERVICE_STACK" \
+>     --template-file infra/service.yml \
+>     --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+>     --capabilities CAPABILITY_NAMED_IAM \
+>     --no-fail-on-empty-changeset \
+>     --parameter-overrides \
+>       "ImageUri=$IMAGE_URI" \
+>       "ClusterName=$CLUSTER_NAME" \
+>       "PublicSubnetAId=$SUBNET_A" \
+>       "PublicSubnetBId=$SUBNET_B" \
+>       "EcsTaskSecurityGroupId=$ECS_SECURITY_GROUP" \
+>       "DatabaseHost=$DATABASE_HOST" \
+>       "DatabaseSecretArn=$DATABASE_SECRET_ARN" \
+>       "TaskExecutionRoleArn=$TASK_EXECUTION_ROLE_ARN" \
+>       "TaskRoleArn=$TASK_ROLE_ARN" \
+>       "ExpressInfrastructureRoleArn=$INFRASTRUCTURE_ROLE_ARN" \
+>       "CorsOrigins=$cors_origins"
+>   shell: /usr/bin/bash -e {0}
+>   env:
+>     AWS_REGION: ap-northeast-2
+>     PLATFORM_STACK: influence-platform-prod
+>     SERVICE_STACK: influence-service-prod
+>     FRONTEND_ORIGIN:
+>     AWS_ACCESS_KEY_ID: ***
+>     AWS_SECRET_ACCESS_KEY: ***
+>     AWS_SESSION_TOKEN: ***
+>     CFN_EXECUTION_ROLE_ARN: arn:aws:iam::<redacted-account-id>:role/influence-cloudformation-execution
+>     IMAGE_URI: <redacted-ecr-image-uri>
+>     CLUSTER_NAME: influence-prod
+>     SUBNET_A: <redacted-subnet-id>
+>     SUBNET_B: <redacted-subnet-id>
+>     ECS_SECURITY_GROUP: <redacted-security-group-id>
+>     DATABASE_HOST: <redacted-rds-host>
+>     DATABASE_SECRET_ARN: <redacted-secret-arn>
+>     TASK_EXECUTION_ROLE_ARN: arn:aws:iam::<redacted-account-id>:role/influence-prod-task-execution
+>     TASK_ROLE_ARN: arn:aws:iam::<redacted-account-id>:role/influence-prod-task
+>     INFRASTRUCTURE_ROLE_ARN: arn:aws:iam::<redacted-account-id>:role/influence-prod-express-infrastructure
+>
+> Waiting for changeset to be created..
+> Waiting for stack create/update to complete
+>
+> aws: [ERROR]: Failed to create/update the stack. Run the following command
+> to fetch the list of events leading up to the failure
+> aws cloudformation describe-stack-events --stack-name influence-service-prod
+> Error: Process completed with exit code 255.
+>
+> 배포 왜 실패했지?
+
+### Codex response and decisions
+
+- Confirmed Platform creation, RDS, and ECR image push succeeded; diagnosed the failure at `AWS::ECS::ExpressGatewayService` creation.
+- Found the direct error: ECS could not assume its service-linked role because `AWSServiceRoleForECS` does not exist in this new account and the CloudFormation execution role cannot create it.
+- Checked the other Express Mode dependencies and found the Elastic Load Balancing and ECS Application Auto Scaling service-linked roles are also absent and currently denied, so recommended handling all three in the next least-privilege fix to avoid sequential failures.
+- Did not change IAM or stacks because this turn requested diagnosis.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- `influence-platform-prod`: `CREATE_COMPLETE`.
+- `influence-service-prod`: `ROLLBACK_COMPLETE`.
+- Service event root cause: unable to assume the ECS service-linked role.
+- `AWSServiceRoleForECS`, `AWSServiceRoleForElasticLoadBalancing`, and `AWSServiceRoleForApplicationAutoScaling_ECSService`: all absent.
+- IAM simulations for creating each role from the CloudFormation execution role: `implicitDeny`.
+
+### Remaining work
+
+- Add least-privilege `iam:CreateServiceLinkedRole` permissions for the three Express Mode service principals, update Bootstrap, and clean up only the rolled-back Service stack.
+- Retry Service deployment; keep the successfully created Platform stack and RDS intact.
+
+## Turn 27
+
+### User (hnuu785) — 2026-08-16 16:36 KST
+
+> 수정해줘
+
+### Codex response and decisions
+
+- Rechecked live AWS state before changing IAM and found that `AWSServiceRoleForECS` had since been created correctly with `AmazonECSServiceRolePolicy`.
+- Inspected the AWS-managed `AmazonECSInfrastructureRoleforExpressGatewayServices` policy and confirmed it already permits creation of the Elastic Load Balancing and ECS Application Auto Scaling service-linked roles.
+- Concluded that the prior failure was first-use IAM propagation timing, matching AWS Express Mode guidance, rather than a lasting missing permission.
+- Avoided adding redundant IAM permissions and deleted only the rolled-back Service stack so it can be retried cleanly. Platform and RDS were preserved.
+- Made the deployment workflow idempotent for immutable ECR tags: reruns now reuse an existing image for the same commit SHA instead of attempting a forbidden overwrite.
+
+### Files changed
+
+- `.github/workflows/deploy-backend.yml`
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- `AWSServiceRoleForECS`: present under `/aws-service-role/ecs.amazonaws.com/` and attached to `AmazonECSServiceRolePolicy`.
+- Express infrastructure managed policy permits service-linked-role creation for `elasticloadbalancing.amazonaws.com` and `ecs.application-autoscaling.amazonaws.com`.
+- `influence-service-prod`: not found after deletion.
+- `influence-platform-prod`: `CREATE_COMPLETE`.
+- The current `main` SHA already has an immutable ECR image, and the updated workflow YAML parses successfully.
+- Local AWS CLI did not support a list operation for Express Gateway services; CloudFormation absence was used as the service cleanup check.
+
+### Remaining work
+
+- Commit and merge the workflow change to `main`. The new commit will trigger deployment, while future reruns of a SHA will safely reuse its existing ECR image.
+- Platform deployment should be a no-op, then Service creation should retry with the ECS role fully propagated.
