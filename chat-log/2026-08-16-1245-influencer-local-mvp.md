@@ -55,3 +55,13 @@
 - 변경 파일: 이 작업 기록 파일만 갱신.
 - 검증: Taplio, Patreon, Gumroad, YouTube, Meta, Stripe, 공정거래위원회의 최신 공식 가격·수익화·마켓플레이스·경제적 이해관계 공개 자료를 확인했다.
 - 남은 사항: 제안 가격은 시장 평균이나 수익 보장이 아니라 검증용 가설이다. 실제 결제·정산·브랜드 거래 기능을 만들기 전 국내 결제, 세무, 통신판매, 광고표시 의무에 대한 별도 법률·회계 검토가 필요하다.
+
+## 2026-08-16 13:42:55 KST
+
+- 사용자: 사용자
+- 요청:
+  > https://github.com/hnuu785/influencer 실시간 브랜치 연결해주세요.
+- 응답 및 결정: 로컬 `codex/creator-launchpad-mvp` 브랜치를 원격 `origin/codex/creator-launchpad-mvp`에 생성하고 upstream 추적을 연결했다. 원격 `main`에 별도 Storylog MVP와 AWS/CI 변경이 먼저 반영되어 있어 `origin/main`을 fetch한 뒤 현재 작업을 그 위로 rebase했다. 충돌 시 원격의 환경설정, AWS 배포, `/health`·`/ready`, 테스트 구조를 유지하고 이번 브랜치의 Storylog UI, 제품 브리프, 근거 기반 스토리 카드 API를 결합했다.
+- 변경 파일: `README.md`, `influence-be/app/main.py`, `influence-be/tests/test_main.py`, `influence-fe/app/globals.css`, `influence-fe/app/layout.tsx`, `influence-fe/app/page.tsx`, `docs/product-brief.md`, 이 작업 기록 파일 외 이전 턴의 설정 변경.
+- 검증: `npm run lint`, `npm run build` 통과. 개발 의존성을 설치한 뒤 백엔드 `pytest` 10개 전체 통과. rebase 후 커밋 `aab3db8`을 원격에 푸시하고 upstream 설정을 확인했다.
+- 남은 사항: GitHub CLI의 기존 `gamzerA` 토큰은 만료되어 PR은 생성하지 않았다. Git push는 별도의 정상 저장 자격 증명으로 완료되었다. PR이 필요하면 `gh auth login -h github.com`으로 다시 인증한 뒤 생성해야 한다.
