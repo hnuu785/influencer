@@ -685,3 +685,125 @@
 ### Remaining work
 
 - Confirm the four values are repository variables, then commit and merge the OIDC compatibility fix into `main` to start deployment.
+
+## Turn 19
+
+### User (hnuu785) — 2026-08-16 14:15 KST
+
+> Run parameters=("EnvironmentName=prod")
+>   parameters=("EnvironmentName=prod")
+>   if [[ -n "$FRONTEND_ORIGIN" ]]; then
+>     parameters+=("FrontendOrigin=$FRONTEND_ORIGIN")
+>   fi
+>   aws cloudformation deploy \
+>     --region "$AWS_REGION" \
+>     --stack-name "$PLATFORM_STACK" \
+>     --template-file infra/platform.yml \
+>     --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+>     --capabilities CAPABILITY_NAMED_IAM \
+>     --no-fail-on-empty-changeset \
+>     --parameter-overrides "${parameters[@]}"
+>   shell: /usr/bin/bash -e {0}
+>   env:
+>     AWS_REGION: ap-northeast-2
+>     PLATFORM_STACK: influence-platform-prod
+>     SERVICE_STACK: influence-service-prod
+>     FRONTEND_ORIGIN:
+>     pythonLocation: /opt/hostedtoolcache/Python/3.13.15/x64
+>     AWS_DEFAULT_REGION: ap-northeast-2
+>     AWS_ACCESS_KEY_ID: ***
+>     AWS_SECRET_ACCESS_KEY: ***
+>     AWS_SESSION_TOKEN: ***
+>     CFN_EXECUTION_ROLE_ARN: arn:aws:iam::<redacted-account-id>:role/influence-cloudformation-execution
+>
+> Waiting for changeset to be created..
+> Waiting for stack create/update to complete
+>
+> aws: [ERROR]: Failed to create/update the stack. Run the following command
+> to fetch the list of events leading up to the failure
+> aws cloudformation describe-stack-events --stack-name influence-platform-prod
+> Error: Process completed with exit code 255.
+>
+>
+> Deploy 실패했는데 왜 실패했어?
+
+### Codex response and decisions
+
+- Confirmed GitHub OIDC authentication now succeeds and diagnosed the failure inside the Platform CloudFormation deployment.
+- Found that the first RDS database creation attempted to create the account's RDS service-linked role, but the CloudFormation execution role lacks `iam:CreateServiceLinkedRole`.
+- Identified `TaskRole` failure as a downstream cancellation, not a separate root cause.
+- Did not change IAM or infrastructure because the user asked for diagnosis in this turn.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- CloudFormation event for `Database`: RDS could not create its service-linked role.
+- `AWSServiceRoleForRDS` does not exist in the account.
+- `influence-platform-prod` finished in `ROLLBACK_COMPLETE`; the service stack was not reached.
+
+### Remaining work
+
+- Add narrowly scoped `iam:CreateServiceLinkedRole` permission for `rds.amazonaws.com` to the CloudFormation execution role in `infra/bootstrap.yml`.
+- Redeploy Bootstrap, remove or recreate the rolled-back Platform stack as needed, and rerun the backend workflow.
+
+## Turn 20
+
+### User (hnuu785) — 2026-08-16 14:23 KST
+
+> 수정해줘
+
+### Codex response and decisions
+
+- Added a least-privilege `iam:CreateServiceLinkedRole` statement to the CloudFormation execution role, restricted to `rds.amazonaws.com` and the exact `AWSServiceRoleForRDS` ARN.
+- Updated the live Bootstrap stack successfully.
+- Deleted the exact failed `influence-platform-prod` stack after confirming it was `ROLLBACK_COMPLETE`.
+- Found that rollback had retained the empty `influence/prod/runpod-api-key` placeholder. Verified it belonged to the failed stack and contained zero secret versions, then force-deleted it to prevent a name collision on retry.
+- Did not rerun the backend workflow or create billable ECS/RDS infrastructure.
+
+### Files changed
+
+- `infra/bootstrap.yml`
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- `git diff --check`: passed.
+- AWS CloudFormation template validation: passed.
+- `influence-bootstrap`: `UPDATE_COMPLETE`.
+- IAM simulation: RDS service-linked-role creation is `allowed`; ECS service-linked-role creation remains `implicitDeny`.
+- `influence-platform-prod`: not found after deletion.
+- `influence-service-prod`: not found.
+- Retained Runpod placeholder secret: confirmed zero versions and then confirmed not found after deletion.
+
+### Remaining work
+
+- Commit `infra/bootstrap.yml` and merge/push it to `main` so the repository matches the live Bootstrap policy.
+- Rerun `Deploy backend` from `main`; the workflow can now retry Platform creation from a clean state.
+
+## Turn 21
+
+### User (hnuu785) — 2026-08-16 14:24 KST
+
+> 내가 AWS 콘솔에서 따로 할 거는 없어?
+
+### Codex response and decisions
+
+- Confirmed that no manual AWS Console configuration is required for the backend deployment; CloudFormation and GitHub Actions manage VPC, RDS, ECR, S3, ECS, IAM, and service-linked-role creation.
+- Distinguished the later Amplify Hosting connection as the only planned AWS Console step after the backend API URL exists.
+- Recommended optional billing/credit monitoring but did not make it a deployment prerequisite.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- Bootstrap and its required IAM update were already confirmed complete in the previous turn; Platform and Service stacks remain absent pending the next deployment.
+
+### Remaining work
+
+- Merge the Bootstrap policy change to `main` and let the backend workflow deploy.
+- After the API URL is produced, connect the GitHub repository and `main` branch in Amplify Hosting.
