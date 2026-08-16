@@ -20,10 +20,15 @@ class Settings:
     db_ssl_ca_file: str | None = None
     redis_url: str | None = None
     cors_origins: tuple[str, ...] = ("http://localhost:3001",)
+    hikerapi_access_key: str | None = None
+    hikerapi_base_url: str = "https://api.hikerapi.com"
+    collector_admin_key: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
         redis_url = os.getenv("REDIS_URL")
+        hikerapi_access_key = os.getenv("HIKERAPI_ACCESS_KEY")
+        collector_admin_key = os.getenv("COLLECTOR_ADMIN_KEY")
         return cls(
             db_host=os.getenv("DB_HOST", "localhost"),
             db_port=int(os.getenv("DB_PORT", "5432")),
@@ -35,6 +40,15 @@ class Settings:
             redis_url=redis_url if redis_url else None,
             cors_origins=_split_csv(
                 os.getenv("CORS_ORIGINS", "http://localhost:3001")
+            ),
+            hikerapi_access_key=(
+                hikerapi_access_key if hikerapi_access_key else None
+            ),
+            hikerapi_base_url=os.getenv(
+                "HIKERAPI_BASE_URL", "https://api.hikerapi.com"
+            ),
+            collector_admin_key=(
+                collector_admin_key if collector_admin_key else None
             ),
         )
 
