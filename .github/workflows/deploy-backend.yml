@@ -1,0 +1,176 @@
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - influence-be/**
+      - infra/**
+      - .github/workflows/deploy-backend.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: influence-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+  PLATFORM_STACK: influence-platform-prod
+  SERVICE_STACK: influence-service-prod
+  FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
+
+jobs:
+  deploy:
+    name: Test and deploy to ECS Express
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            influence-be/requirements-dev.txt
+            infra/requirements.txt
+
+      - name: Install test and infrastructure dependencies
+        run: python3 -m pip install -r influence-be/requirements-dev.txt -r infra/requirements.txt
+
+      - name: Run backend tests
+        working-directory: influence-be
+        run: python3 -m pytest -q
+
+      - name: Validate CloudFormation templates
+        run: cfn-lint --regions "$AWS_REGION" -- infra/*.yml
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+
+      - name: Deploy platform stack
+        env:
+          CFN_EXECUTION_ROLE_ARN: ${{ vars.CFN_EXECUTION_ROLE_ARN }}
+        run: |
+          parameters=("EnvironmentName=prod")
+          if [[ -n "$FRONTEND_ORIGIN" ]]; then
+            parameters+=("FrontendOrigin=$FRONTEND_ORIGIN")
+          fi
+          aws cloudformation deploy \
+            --region "$AWS_REGION" \
+            --stack-name "$PLATFORM_STACK" \
+            --template-file infra/platform.yml \
+            --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides "${parameters[@]}"
+
+      - name: Read platform outputs
+        id: platform
+        run: |
+          stack_output() {
+            aws cloudformation describe-stacks \
+              --region "$AWS_REGION" \
+              --stack-name "$PLATFORM_STACK" \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" \
+              --output text
+          }
+          {
+            echo "repository_uri=$(stack_output BackendRepositoryUri)"
+            echo "cluster_name=$(stack_output ClusterName)"
+            echo "subnet_a=$(stack_output PublicSubnetAId)"
+            echo "subnet_b=$(stack_output PublicSubnetBId)"
+            echo "ecs_security_group=$(stack_output EcsTaskSecurityGroupId)"
+            echo "database_host=$(stack_output DatabaseHost)"
+            echo "database_secret_arn=$(stack_output DatabaseSecretArn)"
+            echo "task_execution_role_arn=$(stack_output TaskExecutionRoleArn)"
+            echo "task_role_arn=$(stack_output TaskRoleArn)"
+            echo "infrastructure_role_arn=$(stack_output ExpressInfrastructureRoleArn)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push immutable backend image
+        env:
+          REPOSITORY_URI: ${{ steps.platform.outputs.repository_uri }}
+        run: |
+          docker build --tag "$REPOSITORY_URI:$GITHUB_SHA" influence-be
+          docker push "$REPOSITORY_URI:$GITHUB_SHA"
+
+      - name: Resolve image digest
+        id: image
+        env:
+          REPOSITORY_URI: ${{ steps.platform.outputs.repository_uri }}
+        run: |
+          digest=$(aws ecr describe-images \
+            --region "$AWS_REGION" \
+            --repository-name influence-backend \
+            --image-ids "imageTag=$GITHUB_SHA" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+          echo "uri=$REPOSITORY_URI@$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy ECS Express service
+        env:
+          CFN_EXECUTION_ROLE_ARN: ${{ vars.CFN_EXECUTION_ROLE_ARN }}
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          CLUSTER_NAME: ${{ steps.platform.outputs.cluster_name }}
+          SUBNET_A: ${{ steps.platform.outputs.subnet_a }}
+          SUBNET_B: ${{ steps.platform.outputs.subnet_b }}
+          ECS_SECURITY_GROUP: ${{ steps.platform.outputs.ecs_security_group }}
+          DATABASE_HOST: ${{ steps.platform.outputs.database_host }}
+          DATABASE_SECRET_ARN: ${{ steps.platform.outputs.database_secret_arn }}
+          TASK_EXECUTION_ROLE_ARN: ${{ steps.platform.outputs.task_execution_role_arn }}
+          TASK_ROLE_ARN: ${{ steps.platform.outputs.task_role_arn }}
+          INFRASTRUCTURE_ROLE_ARN: ${{ steps.platform.outputs.infrastructure_role_arn }}
+        run: |
+          cors_origins="${FRONTEND_ORIGIN:-http://localhost:3001}"
+          aws cloudformation deploy \
+            --region "$AWS_REGION" \
+            --stack-name "$SERVICE_STACK" \
+            --template-file infra/service.yml \
+            --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "ImageUri=$IMAGE_URI" \
+              "ClusterName=$CLUSTER_NAME" \
+              "PublicSubnetAId=$SUBNET_A" \
+              "PublicSubnetBId=$SUBNET_B" \
+              "EcsTaskSecurityGroupId=$ECS_SECURITY_GROUP" \
+              "DatabaseHost=$DATABASE_HOST" \
+              "DatabaseSecretArn=$DATABASE_SECRET_ARN" \
+              "TaskExecutionRoleArn=$TASK_EXECUTION_ROLE_ARN" \
+              "TaskRoleArn=$TASK_ROLE_ARN" \
+              "ExpressInfrastructureRoleArn=$INFRASTRUCTURE_ROLE_ARN" \
+              "CorsOrigins=$cors_origins"
+
+      - name: Verify deployed image and endpoints
+        env:
+          EXPECTED_IMAGE: ${{ steps.image.outputs.uri }}
+        run: |
+          stack_output() {
+            aws cloudformation describe-stacks \
+              --region "$AWS_REGION" \
+              --stack-name "$SERVICE_STACK" \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" \
+              --output text
+          }
+          api_url=$(stack_output ApiUrl)
+          deployed_image=$(stack_output DeployedImage)
+          test "$deployed_image" = "$EXPECTED_IMAGE"
+          curl --fail --retry 12 --retry-all-errors --retry-delay 10 "${api_url%/}/health"
+          curl --fail --retry 12 --retry-all-errors --retry-delay 10 "${api_url%/}/ready"
+          {
+            echo "API URL: $api_url"
+            echo "Image: $deployed_image"
+          } >> "$GITHUB_STEP_SUMMARY"

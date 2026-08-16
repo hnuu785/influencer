@@ -5,14 +5,13 @@ export default function Home() {
     <main>
       <section>
         <p className="eyebrow">INFLUENCE</p>
-        <h1>개발 환경이 준비되었습니다.</h1>
+        <h1>서비스 환경이 준비되었습니다.</h1>
         <p>
-          Next.js는 로컬에서 실행 중이며, FastAPI·PostgreSQL·Redis는 Docker로
-          구성됩니다.
+          Next.js 프론트엔드와 FastAPI API의 연결 상태를 확인할 수 있습니다.
         </p>
         <div className="links">
           <a href={`${apiUrl}/docs`}>API 문서</a>
-          <a href={`${apiUrl}/health`}>연결 상태</a>
+          <a href={`${apiUrl}/ready`}>연결 상태</a>
         </div>
       </section>
     </main>

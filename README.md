@@ -23,10 +23,23 @@ npm run dev
 - 프론트엔드: http://localhost:3001
 - 백엔드 API: http://localhost:8001
 - API 문서: http://localhost:8001/docs
-- 전체 연결 상태: http://localhost:8001/health
+- 프로세스 상태: http://localhost:8001/health
+- PostgreSQL·Redis 연결 상태: http://localhost:8001/ready
 
 백엔드 로그는 `docker compose logs -f backend`로 확인합니다. 종료할 때는 루트에서 `docker compose down`을 실행합니다. DB와 Redis 데이터도 함께 초기화하려면 `docker compose down -v`를 사용합니다.
 
 ## 환경변수
 
 루트 `.env`에서 백엔드 포트와 PostgreSQL 계정을 변경할 수 있습니다. 프론트엔드의 API 주소는 `influence-fe/.env.local`의 `NEXT_PUBLIC_API_URL`에서 설정합니다. PostgreSQL과 Redis는 컨테이너 네트워크 안에서만 접근하며, 필요하면 `docker compose exec db psql -U influence influence` 또는 `docker compose exec redis redis-cli`로 접속할 수 있습니다.
+
+## AWS 배포
+
+운영 환경은 Next.js를 AWS Amplify Hosting, FastAPI를 Amazon ECS Express
+Mode와 ECR, PostgreSQL을 private Amazon RDS에 배포합니다. 생성 파일을 위한
+private S3도 준비하며 Redis와 Runpod LLM endpoint는 실제 기능과 모델이
+확정될 때 추가합니다.
+
+`main` 브랜치의 백엔드·인프라 변경은 GitHub OIDC를 사용해 자동으로
+배포합니다. 장기 AWS access key는 사용하지 않습니다. 최초 AWS bootstrap,
+GitHub 변수, Amplify 연결 방법은 [AWS 배포 안내](infra/README.md)를
+따릅니다.
