@@ -1,0 +1,15 @@
+.env
+.DS_Store
+
+# Frontend
+influence-fe/.env.local
+influence-fe/.next/
+influence-fe/node_modules/
+influence-fe/out/
+
+# Backend
+influence-be/.venv/
+influence-be/.pytest_cache/
+influence-be/**/__pycache__/
+influence-be/**/*.py[cod]
+
