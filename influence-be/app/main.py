@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -7,16 +8,34 @@ from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.ai import create_ai_provider
+from app.api import router as api_router
 from app.config import Settings
+from app.database import cleanup_expired_data, initialize_database
+
+
+async def _retention_worker(session_factory: async_sessionmaker) -> None:
+    while True:
+        try:
+            await cleanup_expired_data(session_factory)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Retention cleanup must not take the API down; the next run retries.
+            pass
+        await asyncio.sleep(6 * 60 * 60)
 
 def create_app(
     settings: Settings | None = None,
     *,
     engine: AsyncEngine | Any | None = None,
     redis_client: Redis | Any | None = None,
+    initialize_schema: bool | None = None,
 ) -> FastAPI:
     app_settings = settings or Settings.from_env()
+    should_initialize_schema = engine is None if initialize_schema is None else initialize_schema
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -31,9 +50,29 @@ def create_app(
         app.state.redis = redis_client
         if app.state.redis is None and app_settings.redis_url is not None:
             app.state.redis = Redis.from_url(app_settings.redis_url)
+        app.state.settings = app_settings
+        app.state.session_factory = async_sessionmaker(
+            app.state.db, expire_on_commit=False
+        )
+        app.state.ai_provider = create_ai_provider(app_settings)
+        app_settings.storage_path.mkdir(parents=True, exist_ok=True)
+        if should_initialize_schema:
+            await initialize_database(app.state.db, app.state.session_factory)
+
+        retention_task = (
+            asyncio.create_task(_retention_worker(app.state.session_factory))
+            if should_initialize_schema
+            else None
+        )
 
         yield
 
+        if retention_task is not None:
+            retention_task.cancel()
+            try:
+                await retention_task
+            except asyncio.CancelledError:
+                pass
         if owns_redis and app.state.redis is not None:
             await app.state.redis.aclose()
         if owns_engine:
@@ -47,6 +86,7 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    application.include_router(api_router)
 
     @application.get("/")
     async def root() -> dict[str, str]:

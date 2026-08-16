@@ -807,3 +807,125 @@
 
 - Merge the Bootstrap policy change to `main` and let the backend workflow deploy.
 - After the API URL is produced, connect the GitHub repository and `main` branch in Amplify Hosting.
+
+## Turn 22
+
+### User (hnuu785) — 2026-08-16 14:37 KST
+
+> Run parameters=("EnvironmentName=prod")
+>   parameters=("EnvironmentName=prod")
+>   if [[ -n "$FRONTEND_ORIGIN" ]]; then
+>     parameters+=("FrontendOrigin=$FRONTEND_ORIGIN")
+>   fi
+>   aws cloudformation deploy \
+>     --region "$AWS_REGION" \
+>     --stack-name "$PLATFORM_STACK" \
+>     --template-file infra/platform.yml \
+>     --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+>     --capabilities CAPABILITY_NAMED_IAM \
+>     --no-fail-on-empty-changeset \
+>     --parameter-overrides "${parameters[@]}"
+>   shell: /usr/bin/bash -e {0}
+>   env:
+>     AWS_REGION: ap-northeast-2
+>     PLATFORM_STACK: influence-platform-prod
+>     SERVICE_STACK: influence-service-prod
+>     FRONTEND_ORIGIN:
+>     AWS_DEFAULT_REGION: ap-northeast-2
+>     AWS_ACCESS_KEY_ID: ***
+>     AWS_SECRET_ACCESS_KEY: ***
+>     AWS_SESSION_TOKEN: ***
+>     CFN_EXECUTION_ROLE_ARN: arn:aws:iam::<redacted-account-id>:role/influence-cloudformation-execution
+>
+> Waiting for changeset to be created..
+> Waiting for stack create/update to complete
+>
+> aws: [ERROR]: Failed to create/update the stack. Run the following command
+> to fetch the list of events leading up to the failure
+> aws cloudformation describe-stack-events --stack-name influence-platform-prod
+> Error: Process completed with exit code 255.
+>
+> 이번엔 왜 실패했어?
+
+### Codex response and decisions
+
+- Confirmed that GitHub OIDC and the newly added RDS service-linked-role permission both worked; `AWSServiceRoleForRDS` was created during this run.
+- Diagnosed the new root cause as missing KMS permissions on the CloudFormation execution role. RDS created the default `alias/aws/rds` key but could not access it to create the encryption grant required for the encrypted DB instance.
+- Identified `TaskRole` as a downstream cancellation again.
+- Did not alter IAM or delete the rollback artifacts because this turn requested diagnosis.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- Platform event for `Database`: the specified KMS key was inaccessible to the current execution role.
+- `AWSServiceRoleForRDS` now exists, confirming the previous permission fix succeeded.
+- `alias/aws/rds` now exists and targets an enabled AWS managed KMS key.
+- IAM simulation for the CloudFormation execution role: both `kms:DescribeKey` and `kms:CreateGrant` are `implicitDeny`.
+- `influence-platform-prod`: `ROLLBACK_COMPLETE`.
+- The failed stack again retained an empty Runpod placeholder secret with zero versions.
+
+### Remaining work
+
+- Add least-privilege KMS permissions for RDS encryption to the CloudFormation execution role, restricted with `kms:ViaService` and AWS-resource grant conditions.
+- Update Bootstrap, delete the rolled-back Platform stack and empty retained secret, then rerun deployment.
+
+## Turn 23
+
+### User (hnuu785) — 2026-08-16 15:05 KST
+
+> 수정해줘
+
+### Codex response and decisions
+
+- Added least-privilege KMS permissions to the CloudFormation execution role: `kms:DescribeKey` only through RDS or Secrets Manager in the same account, and `kms:CreateGrant` only through RDS for AWS resources.
+- Updated the live Bootstrap stack successfully.
+- Deleted the exact `ROLLBACK_COMPLETE` Platform stack.
+- Reconfirmed that the retained Runpod placeholder had zero secret versions, then force-deleted it so the next stack creation will not encounter a name conflict.
+- Did not rerun the backend workflow or start billable application infrastructure.
+
+### Files changed
+
+- `infra/bootstrap.yml`
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- `git diff --check`: passed.
+- AWS CloudFormation template validation: passed.
+- `influence-bootstrap`: `UPDATE_COMPLETE`.
+- IAM simulation on `alias/aws/rds`: `kms:DescribeKey` and RDS `kms:CreateGrant` are allowed.
+- IAM simulation for an EC2-originated grant: `implicitDeny`.
+- `influence-platform-prod` and `influence-service-prod`: not found after cleanup.
+- Empty Runpod placeholder secret: not found after deletion.
+
+### Remaining work
+
+- Commit `infra/bootstrap.yml` without staging unrelated backend work, merge/push it to `main`, and allow the backend workflow to retry from a clean state.
+
+## Turn 24
+
+### User (hnuu785) — 2026-08-16 15:06 KST
+
+> 내가 AWS 콘솔에서 따로 작업해야하는 건 없어?
+
+### Codex response and decisions
+
+- Confirmed that no manual AWS Console action is required for the current backend retry; Bootstrap and CloudFormation now contain the necessary IAM, KMS, RDS, and service-linked-role configuration.
+- Reiterated that the next required action is repository-side: merge the Bootstrap policy update to `main` or manually rerun the backend workflow after the code is committed.
+- Kept Amplify Hosting connection and optional billing alerts as later/optional console tasks, not blockers for backend deployment.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- Relied on the immediately preceding completed checks: Bootstrap `UPDATE_COMPLETE`, required KMS operations allowed, rollback stack and empty retained secret removed.
+
+### Remaining work
+
+- Commit and merge the KMS policy change to `main`, then observe the backend deployment workflow.
+- Use the Amplify console only after the ECS API URL is available.
