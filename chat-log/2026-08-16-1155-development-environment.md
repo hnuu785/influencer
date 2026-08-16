@@ -1160,3 +1160,28 @@
 ### Remaining work
 
 - Commit the combined workflow/Service changes and merge them to `main`; the next workflow run should complete its verification step successfully.
+
+## Turn 30
+
+### User (hnuu785) — 2026-08-16 17:14 KST
+
+> 배포 성공했어 url 알려줘
+
+### Codex response and decisions
+
+- Retrieved the current API URL from the live Service stack and provided direct links to the API root, health, readiness, and FastAPI documentation endpoints.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- `influence-service-prod`: `UPDATE_COMPLETE`.
+- `GET /health`: HTTP 200.
+- `GET /ready`: HTTP 200.
+
+### Remaining work
+
+- Connect Amplify Hosting to the repository and set this ECS URL as `NEXT_PUBLIC_API_URL`.
+- After Amplify assigns a frontend origin, register it as `FRONTEND_ORIGIN` and rerun the backend deployment to update CORS.

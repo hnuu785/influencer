@@ -15,11 +15,14 @@ from sqlalchemy.ext.asyncio import (
 from app.models import (
     Base,
     ExportPackage,
+    InfluencerProfile,
     PatternReference,
     SourceAsset,
     StoryRecord,
     User,
 )
+from app.influencers import load_catalog
+from app.patterns import validate_pattern_seed
 from app.storage import MediaStorage
 
 
@@ -69,8 +72,26 @@ async def initialize_database(
     async with session_factory() as session:
         existing = await session.scalar(select(PatternReference.id).limit(1))
         if existing is None:
-            session.add_all(PatternReference(**seed) for seed in PATTERN_SEEDS)
-            await session.commit()
+            session.add_all(
+                PatternReference(**validate_pattern_seed(seed))
+                for seed in PATTERN_SEEDS
+            )
+
+        profiles = (await session.scalars(select(InfluencerProfile))).all()
+        profiles_by_key = {
+            (profile.platform, profile.username): profile for profile in profiles
+        }
+        for values in load_catalog():
+            key = (values["platform"], values["username"])
+            profile = profiles_by_key.get(key)
+            if profile is None:
+                session.add(InfluencerProfile(**values))
+                continue
+            if profile.retrieval_text != values["retrieval_text"]:
+                profile.embedding = None
+            for field, value in values.items():
+                setattr(profile, field, value)
+        await session.commit()
 
 
 async def cleanup_expired_data(

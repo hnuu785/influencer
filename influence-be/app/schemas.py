@@ -36,6 +36,39 @@ class UserResponse(BaseModel):
     ai_mode: Literal["openai", "demo"]
 
 
+class InfluencerProfileResponse(BaseModel):
+    id: str
+    dataset_version: str
+    rank_by_follower_snapshot: int
+    platform: str
+    username: str
+    profile_url: str
+    full_name: str
+    follower_count: int
+    following_count: int | None
+    media_count: int | None
+    engagement_rate_percent: float | None
+    categories: list[str]
+    profile_type: str
+    countries: list[str]
+    creator_or_manager: str | None
+    observed_at: str
+    observed_precision: Literal["day", "month", "year", "unspecified"]
+    confidence: Literal["high", "medium", "stale"]
+    account_status: str
+    source_url: str
+    secondary_source_urls: list[str]
+    follower_growth_3mo_percent: float | None
+    rights_basis: str
+
+
+class InfluencerCatalogResponse(BaseModel):
+    total: int
+    retrieval_mode: Literal["structured", "keyword", "semantic"]
+    dataset_version: str | None
+    items: list[InfluencerProfileResponse]
+
+
 class CalendarEventSchema(BaseModel):
     id: str
     title: str

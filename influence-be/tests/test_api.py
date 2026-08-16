@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.ai import minimize_personal_data
 from app.config import Settings
 from app.main import create_app
+from app.patterns import validate_pattern_seed
 from app.storage import PreparedUpload
 
 
@@ -133,6 +134,77 @@ def test_invite_code_is_required(tmp_path):
         response = client.post("/api/access/invite", json={"code": "WRONG"})
 
     assert response.status_code == 403
+
+
+def test_influencer_catalog_is_seeded_and_excludes_stale_by_default(tmp_path):
+    with make_mvp_client(tmp_path) as client:
+        login(client)
+        response = client.get("/api/influencers", params={"limit": 100})
+        all_profiles = client.get(
+            "/api/influencers",
+            params={"include_stale": "true", "limit": 100},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 53
+    assert response.json()["dataset_version"] == "2026-08-16"
+    assert all(
+        item["confidence"] != "stale" for item in response.json()["items"]
+    )
+    assert all_profiles.status_code == 200
+    assert all_profiles.json()["total"] == 58
+
+
+def test_influencer_catalog_supports_korean_filters_and_source_citations(tmp_path):
+    with make_mvp_client(tmp_path) as client:
+        login(client)
+        response = client.get(
+            "/api/influencers",
+            params={
+                "category": "패션",
+                "country": "독일",
+                "min_followers": 10_000,
+                "limit": 100,
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["retrieval_mode"] == "structured"
+    assert payload["total"] > 0
+    assert all("fashion" in item["categories"] for item in payload["items"])
+    assert all("Germany" in item["countries"] for item in payload["items"])
+    assert all(item["follower_count"] >= 10_000 for item in payload["items"])
+    assert all(item["source_url"].startswith("https://") for item in payload["items"])
+    assert all(item["observed_at"] for item in payload["items"])
+
+
+def test_influencer_catalog_uses_keyword_fallback_without_api_key(tmp_path):
+    with make_mvp_client(tmp_path) as client:
+        login(client)
+        response = client.get(
+            "/api/influencers", params={"q": "@magazineluiza"}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["retrieval_mode"] == "keyword"
+    assert [item["username"] for item in response.json()["items"]] == [
+        "magazineluiza"
+    ]
+
+
+def test_unverified_external_pattern_is_rejected():
+    try:
+        validate_pattern_seed(
+            {
+                "id": "unverified-pattern",
+                "rights_basis": "source_terms_unverified",
+            }
+        )
+    except ValueError as exc:
+        assert "not approved" in str(exc)
+    else:
+        raise AssertionError("Unverified pattern should not be accepted")
 
 
 def test_mvp_flow_generates_three_format_packages_and_export(tmp_path):
