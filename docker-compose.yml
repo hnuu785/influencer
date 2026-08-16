@@ -18,6 +18,9 @@ services:
       DB_SSL: disable
       REDIS_URL: redis://redis:6379/0
       CORS_ORIGINS: http://localhost:3001
+      HIKERAPI_ACCESS_KEY: ${HIKERAPI_ACCESS_KEY:-}
+      COLLECTOR_ADMIN_KEY: ${COLLECTOR_ADMIN_KEY:-}
+      HIKERAPI_BASE_URL: ${HIKERAPI_BASE_URL:-https://api.hikerapi.com}
     depends_on:
       db:
         condition: service_healthy
