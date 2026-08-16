@@ -68,6 +68,20 @@ curl 'http://127.0.0.1:8001/api/influencers?min_followers=10000&verified=true&li
 
 상세한 데이터 범위와 운영 방법은 [공개 웹 크롤링 안내](docs/web-crawling.md)를 참고합니다.
 
+### AI 가상 인플루언서 공개 데이터셋
+
+2026년 공개 순위·분석·연구 자료에서 확인한 Instagram AI/가상 인플루언서
+58개를 출처, 관측일, 신뢰도와 함께 적재할 수 있습니다. 연락처와 게시물 원문은
+포함하지 않습니다.
+
+```bash
+docker compose exec -T backend python3 -m app.seed_ai_virtual_influencers
+curl 'http://127.0.0.1:8001/api/influencers?limit=100'
+```
+
+최신값과 과거 스냅샷의 구분은
+[AI 가상 인플루언서 데이터셋 안내](docs/ai-virtual-influencer-dataset.md)를 참고합니다.
+
 ### Bright Data 공급자 사용
 
 Instagram처럼 일반 크롤러를 차단하는 플랫폼은 직접 우회하지 않습니다. 별도의

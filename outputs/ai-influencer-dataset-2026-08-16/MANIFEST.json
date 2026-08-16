@@ -1,0 +1,17 @@
+{
+  "dataset_version": "2026-08-16",
+  "generated_at": "2026-08-16T07:09:30.296Z",
+  "record_count": 58,
+  "files": [
+    {
+      "name": "AI_Instagram_Influencers_58_2026-08-16.json",
+      "bytes": 49579,
+      "sha256": "eba698cfcf021e4dd3e752a8ea3a3013af29826815fad051d8b187e863c85a9b"
+    },
+    {
+      "name": "README.md",
+      "bytes": 913,
+      "sha256": "5378f6833297bd172b2b873974d00fc35b9d7d76b9124e16bd7a520f980db15f"
+    }
+  ]
+}

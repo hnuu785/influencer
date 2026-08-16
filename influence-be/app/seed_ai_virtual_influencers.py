@@ -15,13 +15,27 @@ DATA_PATH = (
     / "data"
     / "ai_virtual_influencers_2026-08-16.json"
 )
+EXPANDED_DATA_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "data"
+    / "ai_virtual_influencers_expanded_2026-08-16.json"
+)
+DATA_PATHS = (DATA_PATH, EXPANDED_DATA_PATH)
 
 
-def load_seed_profiles(path: Path = DATA_PATH) -> list[InfluencerProfile]:
-    records: list[dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))
+def load_seed_profiles(path: Path | None = None) -> list[InfluencerProfile]:
+    paths = (path,) if path is not None else DATA_PATHS
+    records: list[dict[str, Any]] = []
+    for data_path in paths:
+        records.extend(json.loads(data_path.read_text(encoding="utf-8")))
+
     profiles: list[InfluencerProfile] = []
+    usernames: set[str] = set()
     for record in records:
         username = record["username"].strip().lstrip("@").lower()
+        if username in usernames:
+            raise ValueError(f"duplicate AI influencer username: {username}")
+        usernames.add(username)
         profile_url = f"https://www.instagram.com/{username}/"
         source_fields = {
             key: value

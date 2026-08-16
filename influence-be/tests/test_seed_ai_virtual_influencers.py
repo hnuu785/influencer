@@ -4,7 +4,7 @@ from app.seed_ai_virtual_influencers import load_seed_profiles
 def test_seed_profiles_are_unique_and_source_labeled():
     profiles = load_seed_profiles()
 
-    assert len(profiles) >= 20
+    assert len(profiles) == 58
     assert len({profile.profile_id for profile in profiles}) == len(profiles)
     assert len({profile.profile_url for profile in profiles}) == len(profiles)
     assert all(profile.platform == "instagram" for profile in profiles)
@@ -31,3 +31,11 @@ def test_seed_profiles_keep_snapshot_provenance():
 
     stale_profile = profiles["gioalemann"]
     assert stale_profile.source_fields["confidence"] == "stale"
+
+    lu = profiles["magazineluiza"]
+    assert lu.follower_count == 9_357_177
+    assert lu.source_fields["confidence"] == "high"
+    assert lu.source_fields["secondary_source_urls"]
+
+    janky = profiles["janky"]
+    assert janky.source_fields["account_status"] == "inactive_or_discontinued"
