@@ -27,7 +27,6 @@ jobs:
   deploy:
     name: Test and deploy to ECS Express
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - uses: actions/checkout@v5
 

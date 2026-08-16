@@ -570,3 +570,118 @@
 
 - Correct the GitHub Actions Variables configuration and rerun `Deploy backend` from `main`.
 - If credential assumption then returns an STS authorization error, inspect the exact new error separately; it would be a different failure stage.
+
+## Turn 15
+
+### User (hnuu785) — 2026-08-16 13:36 KST
+
+> AWS_ACCOUNT_ID 어디서 얻을 수 있어?
+
+### Codex response and decisions
+
+- Provided the AWS CLI command to print the current account's 12-digit ID and explained that this exact value should be saved as the GitHub repository variable `AWS_ACCOUNT_ID`.
+- Also noted the AWS Console account menu as an alternative location.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- No infrastructure changes were required; the AWS CLI session was already confirmed authenticated earlier.
+
+### Remaining work
+
+- Register the account ID and the other three GitHub repository variables, then rerun the backend deployment from `main`.
+
+## Turn 16
+
+### User (hnuu785) — 2026-08-16 13:42 KST
+
+> 4개 등록했어. 이제 배포하면 돼?
+
+### Codex response and decisions
+
+- Stopped the deployment before a predictable second OIDC failure.
+- Found that the workflow job references the `production` GitHub Environment, which changes the OIDC subject from a branch subject to an environment subject, while the AWS role currently trusts a branch subject.
+- Also found that this repository was created after GitHub's July 15, 2026 immutable-subject rollout, so its OIDC repository segment includes immutable owner and repository IDs; the current Bootstrap template uses the legacy name-only subject.
+- Recommended the minimal design correction: remove the unused GitHub Environment from the job so AWS can enforce `main` directly, then update the Bootstrap trust policy to the immutable `main` branch subject and redeploy Bootstrap.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- GitHub's official OIDC reference states that a job Environment replaces the branch context in `sub`.
+- The same reference states that repositories created after July 15, 2026 use owner/repository IDs in immutable subjects.
+- GitHub's repository API reports that `hnuu785/influencer` was created on 2026-08-16.
+- Current workflow contains `environment: production`; current IAM trust expects the legacy `repo:hnuu785/influencer:ref:refs/heads/main` subject.
+
+### Remaining work
+
+- Correct `.github/workflows/deploy-backend.yml`, `infra/bootstrap.yml`, and deployment documentation.
+- Redeploy `influence-bootstrap`, merge the correction into `main`, and only then rerun `Deploy backend`.
+
+## Turn 17
+
+### User (hnuu785) — 2026-08-16 13:46 KST
+
+> 이 호환성 수정과 Bootstrap 업데이트까지 제가 진행해도 된다면 “수정해줘”라고 해주세요.
+>
+> 수정해줘
+
+### Codex response and decisions
+
+- Updated the Bootstrap trust policy to GitHub's immutable repository subject format while preserving the direct `main` branch restriction.
+- Removed the unused `production` GitHub Environment from the backend deployment job so its OIDC token remains branch-scoped.
+- Updated deployment documentation to explain why the workflow does not use a GitHub Environment.
+- Updated the live `influence-bootstrap` stack but intentionally did not push to `main`, because that push would trigger creation of billable ECS, RDS, and load-balancer resources.
+
+### Files changed
+
+- `.github/workflows/deploy-backend.yml`
+- `infra/bootstrap.yml`
+- `infra/README.md`
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- `git diff --check`: passed.
+- GitHub Actions workflow YAML parse: passed.
+- AWS `validate-template` for `infra/bootstrap.yml`: passed.
+- `influence-bootstrap`: `UPDATE_COMPLETE`.
+- Live IAM OIDC subject exactly matches the immutable identity of this repository on `main`.
+- The workflow no longer contains `environment: production`.
+- `influence-platform-prod` and `influence-service-prod` remain absent, so the update did not start billable application infrastructure.
+- Local `cfn-lint` was unavailable; the AWS-side template validator passed instead.
+
+### Remaining work
+
+- Commit these compatibility changes and merge/push them to `main`. That `main` update will trigger the backend deployment workflow and begin creating billable infrastructure.
+- Watch the deployment run through platform creation, image push, service creation, and `/health` plus `/ready` smoke tests.
+
+## Turn 18
+
+### User (hnuu785) — 2026-08-16 13:48 KST
+
+> production Environment에만 등록했다면 Repository variables로 옮겨야 합니다?
+>
+> 이거는 어떻게 확인해
+
+### Codex response and decisions
+
+- Explained the two GitHub settings locations that distinguish repository-level Actions variables from `production` Environment variables.
+- Directed the user to confirm that all four AWS variable names appear under the Actions Variables tab in the Repository variables section, not only inside the `production` Environment or the Secrets tab.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- No AWS or GitHub state was changed; this turn provided a UI verification procedure.
+
+### Remaining work
+
+- Confirm the four values are repository variables, then commit and merge the OIDC compatibility fix into `main` to start deployment.

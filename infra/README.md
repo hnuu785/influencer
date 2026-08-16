@@ -75,9 +75,10 @@ In repository **Settings → Secrets and variables → Actions → Variables**, 
 | `AWS_DEPLOY_ROLE_ARN` | Bootstrap output `GitHubDeployRoleArn` |
 | `CFN_EXECUTION_ROLE_ARN` | Bootstrap output `CloudFormationExecutionRoleArn` |
 
-Create a GitHub environment named `production` without required reviewers. The
-workflow is intentionally automatic after tests pass. The OIDC trust policy still
-restricts access to `hnuu785/influencer` on `main`.
+The workflow intentionally does not reference a GitHub Environment. This keeps
+the OIDC subject branch-scoped so the AWS trust policy can restrict access to the
+immutable identity of `hnuu785/influencer` on `main`. The workflow is automatic
+after tests pass.
 
 Run **Deploy backend** once from the Actions page, or merge a backend/infra change
 to `main`. The workflow creates the platform, pushes an image tagged with the Git
