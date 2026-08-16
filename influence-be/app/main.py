@@ -9,15 +9,16 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from app.brightdata import BrightDataProfileProvider
 from app.config import Settings
 from app.influencers import (
-    HikerAPIClient,
-    InfluencerCollectionRequest,
-    InfluencerCollectionResult,
-    InfluencerCollector,
+    InfluencerCrawlerService,
+    InfluencerCrawlRequest,
+    InfluencerCrawlResult,
     InfluencerProfile,
     InfluencerStore,
 )
+from app.web_crawler import PublicProfileCrawler
 
 
 def create_app(
@@ -25,7 +26,7 @@ def create_app(
     *,
     engine: AsyncEngine | Any | None = None,
     redis_client: Redis | Any | None = None,
-    collector_service: InfluencerCollector | Any | None = None,
+    crawler_service: InfluencerCrawlerService | Any | None = None,
     influencer_store: InfluencerStore | Any | None = None,
 ) -> FastAPI:
     app_settings = settings or Settings.from_env()
@@ -59,6 +60,25 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    if app_settings.influencer_provider not in {"public_web", "brightdata"}:
+        raise ValueError("INFLUENCER_PROVIDER must be public_web or brightdata")
+    default_provider = None
+    if crawler_service is None and app_settings.influencer_provider == "public_web":
+        default_provider = PublicProfileCrawler(
+            user_agent=app_settings.crawler_user_agent,
+            request_delay_seconds=app_settings.crawler_request_delay_seconds,
+            allowed_domains=app_settings.crawler_allowed_domains,
+        )
+    elif (
+        crawler_service is None
+        and app_settings.influencer_provider == "brightdata"
+        and app_settings.brightdata_api_token
+    ):
+        default_provider = BrightDataProfileProvider(
+            app_settings.brightdata_api_token,
+            dataset_id=app_settings.brightdata_profile_dataset_id,
+            base_url=app_settings.brightdata_base_url,
+        )
 
     @application.get("/")
     async def root() -> dict[str, str]:
@@ -72,13 +92,13 @@ def create_app(
         return influencer_store or InfluencerStore(application.state.db)
 
     @application.post(
-        "/api/admin/influencers/collect",
-        response_model=InfluencerCollectionResult,
+        "/api/admin/influencers/crawl",
+        response_model=InfluencerCrawlResult,
     )
-    async def collect_influencers(
-        request: InfluencerCollectionRequest,
+    async def crawl_influencers(
+        request: InfluencerCrawlRequest,
         collector_key: str | None = Header(default=None, alias="X-Collector-Key"),
-    ) -> InfluencerCollectionResult:
+    ) -> InfluencerCrawlResult:
         if not app_settings.collector_admin_key:
             raise HTTPException(
                 status_code=503,
@@ -89,27 +109,24 @@ def create_app(
         ):
             raise HTTPException(status_code=401, detail="invalid collector key")
 
-        service = collector_service
+        service = crawler_service
         if service is None:
-            if not app_settings.hikerapi_access_key:
+            if default_provider is None:
                 raise HTTPException(
                     status_code=503,
-                    detail="HIKERAPI_ACCESS_KEY is not configured",
+                    detail="BRIGHTDATA_API_TOKEN is not configured",
                 )
-            service = InfluencerCollector(
-                HikerAPIClient(
-                    app_settings.hikerapi_access_key,
-                    base_url=app_settings.hikerapi_base_url,
-                ),
+            service = InfluencerCrawlerService(
+                default_provider,
                 get_influencer_store(),
             )
 
         try:
-            return await service.collect(request.usernames)
+            return await service.crawl(request.urls)
         except Exception as exc:
             raise HTTPException(
                 status_code=503,
-                detail="influencer collection database is unavailable",
+                detail="influencer crawler is unavailable",
             ) from exc
 
     @application.get("/api/influencers", response_model=list[InfluencerProfile])

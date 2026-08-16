@@ -1,4 +1,6 @@
 .env
+__pycache__/
+*.pyc
 .DS_Store
 
 # Frontend
@@ -12,4 +14,3 @@ influence-be/.venv/
 influence-be/.pytest_cache/
 influence-be/**/__pycache__/
 influence-be/**/*.py[cod]
-

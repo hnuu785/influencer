@@ -33,31 +33,83 @@ npm run dev
 
 루트 `.env`에서 백엔드 포트와 PostgreSQL 계정을 변경할 수 있습니다. 프론트엔드의 API 주소는 `influence-fe/.env.local`의 `NEXT_PUBLIC_API_URL`에서 설정합니다. PostgreSQL과 Redis는 컨테이너 네트워크 안에서만 접근하며, 필요하면 `docker compose exec db psql -U influence influence` 또는 `docker compose exec redis redis-cli`로 접속할 수 있습니다.
 
-## HikerAPI 인플루언서 수집
+## 공개 웹 인플루언서 크롤링
 
-발급받은 HikerAPI 키와 별도의 관리자 키를 `.env`에 설정합니다. 실제 키는 Git에 커밋하지 않습니다.
+별도의 유료 데이터 API 없이, 각 사이트가 `robots.txt`에서 허용한 공개 프로필
+페이지의 JSON-LD·OpenGraph·HTML 메타데이터를 PostgreSQL에 저장합니다. 로그인,
+CAPTCHA 우회, 프록시 회전, 비공개 데이터 수집은 하지 않습니다.
+
+관리자 크롤링 API를 보호할 키와 정중한 요청 간격을 `.env`에 설정합니다.
 
 ```dotenv
-HIKERAPI_ACCESS_KEY=발급받은_키
 COLLECTOR_ADMIN_KEY=충분히_긴_임의의_관리자_키
+CRAWLER_USER_AGENT=InfluenceCrawler/1.0
+CRAWLER_REQUEST_DELAY_SECONDS=2.0
+CRAWLER_ALLOWED_DOMAINS=
 ```
 
-백엔드를 재시작한 다음, 공개 Instagram 사용자명을 최대 50개까지 전달합니다. 수집 API는 유료 HikerAPI 요청을 발생시키므로 관리자 키가 없으면 비활성화됩니다.
+백엔드를 재시작한 다음 공개 프로필 URL을 최대 50개까지 전달합니다. 운영에서는
+`CRAWLER_USER_AGENT`에 연락 가능한 정책 URL을 포함하고,
+`CRAWLER_ALLOWED_DOMAINS`로 허용 도메인을 제한하는 것을 권장합니다.
 
 ```bash
-curl -X POST http://127.0.0.1:8001/api/admin/influencers/collect \
+curl -X POST http://127.0.0.1:8001/api/admin/influencers/crawl \
   -H 'Content-Type: application/json' \
   -H 'X-Collector-Key: 설정한_관리자_키' \
-  -d '{"usernames":["natgeo","instagram"]}'
+  -d '{"urls":["https://허용된-사이트.example/creator"]}'
 ```
 
-수집된 계정은 사용자 ID 기준으로 중복 없이 갱신됩니다.
+프로필 URL의 안정적인 해시를 ID로 사용하므로 같은 URL은 중복 없이 갱신됩니다.
+팔로워 수처럼 페이지가 공개하지 않는 필드는 `null`로 보존합니다.
 
 ```bash
 curl 'http://127.0.0.1:8001/api/influencers?min_followers=10000&verified=true&limit=20'
 ```
 
-상세한 데이터 범위와 운영 방법은 [HikerAPI 수집 안내](docs/hikerapi-collection.md)를 참고합니다.
+상세한 데이터 범위와 운영 방법은 [공개 웹 크롤링 안내](docs/web-crawling.md)를 참고합니다.
+
+### Bright Data 공급자 사용
+
+Instagram처럼 일반 크롤러를 차단하는 플랫폼은 직접 우회하지 않습니다. 별도의
+공급자 계약과 정책 검토를 마친 경우 Bright Data 프로필 API를 선택할 수 있습니다.
+
+Bright Data 계정이 준비되어 있다면 아래 명령이 공식 API 키 설정 페이지를 열고,
+숨김 입력으로 받은 키를 무과금 계정 API에서 확인한 뒤 `.env` 저장, 백엔드 재생성,
+준비 상태 확인까지 수행합니다. Bright Data 정책상 로그인·이메일/MFA 확인과 키 생성
+승인은 계정 소유자가 대시보드에서 완료해야 하며, 생성 API 키는 한 번만 표시됩니다.
+
+```bash
+python3 scripts/setup_brightdata.py
+```
+
+CI에서는 키가 명령행 인자나 셸 기록에 남지 않도록 secret을 표준 입력으로 전달합니다.
+
+```bash
+printf '%s\n' "$BRIGHTDATA_API_TOKEN" | \
+  python3 scripts/setup_brightdata.py --token-stdin
+```
+
+발급 도구는 [Bright Data 공식 인증 안내](https://docs.brightdata.com/api-reference/authentication)의
+최소 권한과 만료일 설정을 따르며 `.env` 권한을 `0600`으로 제한합니다. macOS
+Framework Python에 CA 인증서 경로가 없으면 토큰을 명령행에 노출하지 않고 시스템
+`curl`의 신뢰 저장소로 인증 검사를 자동 재시도합니다.
+
+```dotenv
+INFLUENCER_PROVIDER=brightdata
+BRIGHTDATA_API_TOKEN=서버에서만_보관할_API_토큰
+BRIGHTDATA_INSTAGRAM_PROFILE_DATASET_ID=gd_l1vikfch901nx3by4
+```
+
+설정 후 백엔드를 다시 생성합니다.
+
+```bash
+docker compose up -d --force-recreate backend
+```
+
+기존 `/api/admin/influencers/crawl` 요청 형식은 그대로 사용합니다. 공급자 응답은
+공통 `InfluencerProfile`로 정규화되며, API 토큰이 없으면 외부 호출 전에 HTTP
+503으로 중단됩니다. 외부 공급자를 사용해도 플랫폼 약관, 개인정보 처리,
+보존기간 및 삭제 요청에 대한 운영 책임은 서비스에 남습니다.
 
 ## AWS 배포
 

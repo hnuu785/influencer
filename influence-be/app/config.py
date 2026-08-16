@@ -20,14 +20,18 @@ class Settings:
     db_ssl_ca_file: str | None = None
     redis_url: str | None = None
     cors_origins: tuple[str, ...] = ("http://localhost:3001",)
-    hikerapi_access_key: str | None = None
-    hikerapi_base_url: str = "https://api.hikerapi.com"
     collector_admin_key: str | None = None
+    crawler_user_agent: str = "InfluenceCrawler/1.0"
+    crawler_request_delay_seconds: float = 2.0
+    crawler_allowed_domains: tuple[str, ...] = ()
+    influencer_provider: str = "public_web"
+    brightdata_api_token: str | None = None
+    brightdata_profile_dataset_id: str = "gd_l1vikfch901nx3by4"
+    brightdata_base_url: str = "https://api.brightdata.com"
 
     @classmethod
     def from_env(cls) -> "Settings":
         redis_url = os.getenv("REDIS_URL")
-        hikerapi_access_key = os.getenv("HIKERAPI_ACCESS_KEY")
         collector_admin_key = os.getenv("COLLECTOR_ADMIN_KEY")
         return cls(
             db_host=os.getenv("DB_HOST", "localhost"),
@@ -41,14 +45,28 @@ class Settings:
             cors_origins=_split_csv(
                 os.getenv("CORS_ORIGINS", "http://localhost:3001")
             ),
-            hikerapi_access_key=(
-                hikerapi_access_key if hikerapi_access_key else None
-            ),
-            hikerapi_base_url=os.getenv(
-                "HIKERAPI_BASE_URL", "https://api.hikerapi.com"
-            ),
             collector_admin_key=(
                 collector_admin_key if collector_admin_key else None
+            ),
+            crawler_user_agent=os.getenv(
+                "CRAWLER_USER_AGENT", "InfluenceCrawler/1.0"
+            ),
+            crawler_request_delay_seconds=float(
+                os.getenv("CRAWLER_REQUEST_DELAY_SECONDS", "2.0")
+            ),
+            crawler_allowed_domains=_split_csv(
+                os.getenv("CRAWLER_ALLOWED_DOMAINS", "")
+            ),
+            influencer_provider=os.getenv(
+                "INFLUENCER_PROVIDER", "public_web"
+            ).lower(),
+            brightdata_api_token=os.getenv("BRIGHTDATA_API_TOKEN") or None,
+            brightdata_profile_dataset_id=os.getenv(
+                "BRIGHTDATA_INSTAGRAM_PROFILE_DATASET_ID",
+                "gd_l1vikfch901nx3by4",
+            ),
+            brightdata_base_url=os.getenv(
+                "BRIGHTDATA_BASE_URL", "https://api.brightdata.com"
             ),
         )
 
