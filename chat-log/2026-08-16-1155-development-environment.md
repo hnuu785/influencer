@@ -807,3 +807,67 @@
 
 - Merge the Bootstrap policy change to `main` and let the backend workflow deploy.
 - After the API URL is produced, connect the GitHub repository and `main` branch in Amplify Hosting.
+
+## Turn 22
+
+### User (hnuu785) — 2026-08-16 14:37 KST
+
+> Run parameters=("EnvironmentName=prod")
+>   parameters=("EnvironmentName=prod")
+>   if [[ -n "$FRONTEND_ORIGIN" ]]; then
+>     parameters+=("FrontendOrigin=$FRONTEND_ORIGIN")
+>   fi
+>   aws cloudformation deploy \
+>     --region "$AWS_REGION" \
+>     --stack-name "$PLATFORM_STACK" \
+>     --template-file infra/platform.yml \
+>     --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+>     --capabilities CAPABILITY_NAMED_IAM \
+>     --no-fail-on-empty-changeset \
+>     --parameter-overrides "${parameters[@]}"
+>   shell: /usr/bin/bash -e {0}
+>   env:
+>     AWS_REGION: ap-northeast-2
+>     PLATFORM_STACK: influence-platform-prod
+>     SERVICE_STACK: influence-service-prod
+>     FRONTEND_ORIGIN:
+>     AWS_DEFAULT_REGION: ap-northeast-2
+>     AWS_ACCESS_KEY_ID: ***
+>     AWS_SECRET_ACCESS_KEY: ***
+>     AWS_SESSION_TOKEN: ***
+>     CFN_EXECUTION_ROLE_ARN: arn:aws:iam::<redacted-account-id>:role/influence-cloudformation-execution
+>
+> Waiting for changeset to be created..
+> Waiting for stack create/update to complete
+>
+> aws: [ERROR]: Failed to create/update the stack. Run the following command
+> to fetch the list of events leading up to the failure
+> aws cloudformation describe-stack-events --stack-name influence-platform-prod
+> Error: Process completed with exit code 255.
+>
+> 이번엔 왜 실패했어?
+
+### Codex response and decisions
+
+- Confirmed that GitHub OIDC and the newly added RDS service-linked-role permission both worked; `AWSServiceRoleForRDS` was created during this run.
+- Diagnosed the new root cause as missing KMS permissions on the CloudFormation execution role. RDS created the default `alias/aws/rds` key but could not access it to create the encryption grant required for the encrypted DB instance.
+- Identified `TaskRole` as a downstream cancellation again.
+- Did not alter IAM or delete the rollback artifacts because this turn requested diagnosis.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- Platform event for `Database`: the specified KMS key was inaccessible to the current execution role.
+- `AWSServiceRoleForRDS` now exists, confirming the previous permission fix succeeded.
+- `alias/aws/rds` now exists and targets an enabled AWS managed KMS key.
+- IAM simulation for the CloudFormation execution role: both `kms:DescribeKey` and `kms:CreateGrant` are `implicitDeny`.
+- `influence-platform-prod`: `ROLLBACK_COMPLETE`.
+- The failed stack again retained an empty Runpod placeholder secret with zero versions.
+
+### Remaining work
+
+- Add least-privilege KMS permissions for RDS encryption to the CloudFormation execution role, restricted with `kms:ViaService` and AWS-resource grant conditions.
+- Update Bootstrap, delete the rolled-back Platform stack and empty retained secret, then rerun deployment.
