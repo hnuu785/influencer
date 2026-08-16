@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -8,6 +8,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -187,6 +188,54 @@ class PatternReference(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     embedding: Mapped[list[float] | None] = mapped_column(
         Vector(1536), nullable=True
+    )
+
+
+class InfluencerProfile(Base):
+    __tablename__ = "influencer_profiles"
+    __table_args__ = (
+        UniqueConstraint(
+            "platform", "username", name="uq_influencer_platform_username"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    dataset_version: Mapped[str] = mapped_column(String(30), index=True)
+    rank_by_follower_snapshot: Mapped[int] = mapped_column(Integer)
+    platform: Mapped[str] = mapped_column(String(20), index=True)
+    username: Mapped[str] = mapped_column(String(80), index=True)
+    profile_url: Mapped[str] = mapped_column(Text)
+    full_name: Mapped[str] = mapped_column(String(255))
+    follower_count: Mapped[int] = mapped_column(Integer, index=True)
+    following_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    media_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    engagement_rate_percent: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    categories: Mapped[list[str]] = mapped_column(JSON, default=list)
+    profile_type: Mapped[str] = mapped_column(String(60), index=True)
+    countries: Mapped[list[str]] = mapped_column(JSON, default=list)
+    creator_or_manager: Mapped[str | None] = mapped_column(Text, nullable=True)
+    observed_at: Mapped[str] = mapped_column(String(100))
+    observed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    observed_precision: Mapped[str] = mapped_column(String(20))
+    confidence: Mapped[str] = mapped_column(String(20), index=True)
+    account_status: Mapped[str] = mapped_column(String(60), index=True)
+    source_url: Mapped[str] = mapped_column(Text)
+    secondary_source_urls: Mapped[list[str]] = mapped_column(JSON, default=list)
+    source_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    follower_growth_3mo_percent: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    retrieval_text: Mapped[str] = mapped_column(Text)
+    rights_basis: Mapped[str] = mapped_column(
+        String(80), default="source_terms_unverified"
+    )
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(1536), nullable=True
+    )
+    ingested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
     )
 
 

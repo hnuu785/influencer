@@ -62,6 +62,19 @@ npm run dev
 
 OpenAI 키가 있으면 PostgreSQL/pgvector에서 개인 승인 이력과 권리 확인 시드 패턴을 검색한 뒤 필요한 문맥만 Responses API에 전달합니다. 키가 없으면 같은 API 계약을 유지하는 체험 모드로 동작합니다.
 
+## 인플루언서 프로필 카탈로그
+
+백엔드는 번들된 58개 Instagram 프로필 스냅샷을 시작 시
+`influencer_profiles`에 정규화·업서트합니다. 로그인 후
+`GET /api/influencers`에서 분야, 국가, 프로필 유형, 팔로워 수,
+참여율, 신뢰도를 조합해 검색할 수 있습니다. `stale` 데이터는 기본적으로
+제외되며 각 결과에는 관측 시점과 출처 URL이 포함됩니다.
+
+OpenAI 키와 PostgreSQL/pgvector가 있으면 자연어 질의를 의미 검색하고,
+그 외 환경에서는 같은 API를 키워드 검색으로 제공합니다. 이 프로필 데이터는
+포맷 패턴으로 자동 승격하지 않습니다. 자세한 데이터 경계와 검색 계약은
+[인플루언서 카탈로그 안내](docs/influencer-catalog.md)를 따릅니다.
+
 ## AWS 배포
 
 운영 환경은 Next.js를 AWS Amplify Hosting, FastAPI를 Amazon ECS Express

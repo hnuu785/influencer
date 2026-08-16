@@ -73,6 +73,9 @@ class DemoAIProvider:
     async def embed(self, text: str) -> list[float] | None:
         return None
 
+    async def embed_many(self, texts: list[str]) -> list[list[float] | None]:
+        return [None for _ in texts]
+
     async def create_story_cards(self, context: str) -> StoryCardBatch:
         compact = " ".join(context.split())
         sentences = [
@@ -348,12 +351,19 @@ class OpenAIProvider:
         return response.output_text
 
     async def embed(self, text: str) -> list[float] | None:
+        embeddings = await self.embed_many([text])
+        return embeddings[0]
+
+    async def embed_many(self, texts: list[str]) -> list[list[float] | None]:
+        if not texts:
+            return []
         response = await self.client.embeddings.create(
             model=self.embedding_model,
-            input=minimize_personal_data(text),
+            input=[minimize_personal_data(text) for text in texts],
             dimensions=1536,
         )
-        return response.data[0].embedding
+        by_index = sorted(response.data, key=lambda item: item.index)
+        return [item.embedding for item in by_index]
 
     async def create_story_cards(self, context: str) -> StoryCardBatch:
         response = await self.client.responses.parse(

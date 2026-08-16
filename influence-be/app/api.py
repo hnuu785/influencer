@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 from uuid import uuid4
 
@@ -41,6 +41,7 @@ from app.auth import (
     upsert_google_user,
 )
 from app.database import session_dependency
+from app.influencers import keyword_score, matches_category, matches_country
 from app.models import (
     BrandProfile,
     ContentBrief,
@@ -48,6 +49,7 @@ from app.models import (
     ConversationLog,
     ExportPackage,
     GoogleConnection,
+    InfluencerProfile,
     MetricSnapshot,
     PatternReference,
     PublicationConfirmation,
@@ -71,6 +73,8 @@ from app.schemas import (
     GeneratedPackage,
     InviteRequest,
     InviteResponse,
+    InfluencerCatalogResponse,
+    InfluencerProfileResponse,
     InterviewQuestion,
     MetricInput,
     PackageDecisionRequest,
@@ -121,6 +125,34 @@ def _provider(request: Request):
 
 def _storage(request: Request):
     return request.app.state.storage
+
+
+def _serialize_influencer(profile: InfluencerProfile) -> InfluencerProfileResponse:
+    return InfluencerProfileResponse(
+        id=profile.id,
+        dataset_version=profile.dataset_version,
+        rank_by_follower_snapshot=profile.rank_by_follower_snapshot,
+        platform=profile.platform,
+        username=profile.username,
+        profile_url=profile.profile_url,
+        full_name=profile.full_name,
+        follower_count=profile.follower_count,
+        following_count=profile.following_count,
+        media_count=profile.media_count,
+        engagement_rate_percent=profile.engagement_rate_percent,
+        categories=profile.categories,
+        profile_type=profile.profile_type,
+        countries=profile.countries,
+        creator_or_manager=profile.creator_or_manager,
+        observed_at=profile.observed_at,
+        observed_precision=profile.observed_precision,
+        confidence=profile.confidence,
+        account_status=profile.account_status,
+        source_url=profile.source_url,
+        secondary_source_urls=profile.secondary_source_urls,
+        follower_growth_3mo_percent=profile.follower_growth_3mo_percent,
+        rights_basis=profile.rights_basis,
+    )
 
 
 @dataclass
@@ -360,6 +392,122 @@ async def me(
 @router.post("/auth/logout", status_code=204)
 async def logout(response: Response) -> None:
     clear_session_cookie(response)
+
+
+@router.get("/influencers", response_model=InfluencerCatalogResponse)
+async def search_influencers(
+    request: Request,
+    q: str | None = Query(default=None, max_length=200),
+    category: str | None = Query(default=None, max_length=80),
+    country: str | None = Query(default=None, max_length=80),
+    profile_type: str | None = Query(default=None, max_length=60),
+    min_followers: int | None = Query(default=None, ge=0),
+    max_followers: int | None = Query(default=None, ge=0),
+    min_engagement: float | None = Query(default=None, ge=0),
+    confidence: Literal["high", "medium", "stale"] | None = None,
+    include_stale: bool = False,
+    limit: int = Query(default=20, ge=1, le=100),
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(session_dependency),
+) -> InfluencerCatalogResponse:
+    del user
+    if (
+        min_followers is not None
+        and max_followers is not None
+        and min_followers > max_followers
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="최소 팔로워 수는 최대 팔로워 수보다 클 수 없습니다.",
+        )
+
+    statement = select(InfluencerProfile)
+    if min_followers is not None:
+        statement = statement.where(
+            InfluencerProfile.follower_count >= min_followers
+        )
+    if max_followers is not None:
+        statement = statement.where(
+            InfluencerProfile.follower_count <= max_followers
+        )
+    if min_engagement is not None:
+        statement = statement.where(
+            InfluencerProfile.engagement_rate_percent >= min_engagement
+        )
+    if profile_type:
+        statement = statement.where(InfluencerProfile.profile_type == profile_type)
+    if confidence:
+        statement = statement.where(InfluencerProfile.confidence == confidence)
+    elif not include_stale:
+        statement = statement.where(InfluencerProfile.confidence != "stale")
+
+    profiles = (await session.scalars(statement)).all()
+    if category:
+        profiles = [
+            profile
+            for profile in profiles
+            if matches_category(profile.categories, category)
+        ]
+    if country:
+        profiles = [
+            profile
+            for profile in profiles
+            if matches_country(profile.countries, country)
+        ]
+    dataset_version = profiles[0].dataset_version if profiles else None
+    retrieval_mode: Literal["structured", "keyword", "semantic"] = "structured"
+
+    normalized_query = q.strip() if q else ""
+    if normalized_query and profiles:
+        query_embedding = await _provider(request).embed(normalized_query)
+        is_postgres = bool(
+            session.bind and session.bind.dialect.name == "postgresql"
+        )
+        if query_embedding is not None and is_postgres:
+            missing = [profile for profile in profiles if profile.embedding is None]
+            embeddings = await _provider(request).embed_many(
+                [profile.retrieval_text for profile in missing]
+            )
+            for profile, embedding in zip(missing, embeddings, strict=True):
+                profile.embedding = embedding
+            await session.flush()
+            profile_ids = [profile.id for profile in profiles]
+            profiles = (
+                await session.scalars(
+                    select(InfluencerProfile)
+                    .where(InfluencerProfile.id.in_(profile_ids))
+                    .order_by(
+                        InfluencerProfile.embedding.cosine_distance(
+                            query_embedding
+                        )
+                    )
+                )
+            ).all()
+            await session.commit()
+            retrieval_mode = "semantic"
+        else:
+            scored = [
+                (keyword_score(profile.retrieval_text, normalized_query), profile)
+                for profile in profiles
+            ]
+            profiles = [
+                profile
+                for score, profile in sorted(
+                    scored,
+                    key=lambda item: (-item[0], -item[1].follower_count),
+                )
+                if score > 0
+            ]
+            retrieval_mode = "keyword"
+    else:
+        profiles.sort(key=lambda profile: profile.follower_count, reverse=True)
+
+    return InfluencerCatalogResponse(
+        total=len(profiles),
+        retrieval_mode=retrieval_mode,
+        dataset_version=dataset_version,
+        items=[_serialize_influencer(profile) for profile in profiles[:limit]],
+    )
 
 
 @router.get("/calendar/start", response_model=AuthStartResponse)
