@@ -1,131 +1,504 @@
 "use client";
 
-import { FormEvent, ReactNode, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 
-type IconName =
-  | "home" | "archive" | "pen" | "send" | "chart" | "settings"
-  | "mic" | "text" | "image" | "sparkles" | "arrow" | "more"
-  | "check" | "link" | "quote" | "close" | "chevron";
+type Channel = "LinkedIn" | "X" | "Instagram";
 
-function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
-  const paths: Record<IconName, ReactNode> = {
-    home: <><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></>,
-    archive: <><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 4V2m8 2V2M4 9h16M8 13h3m-3 4h7"/></>,
-    pen: <><path d="m4 20 4.2-1 10.6-10.6a2.4 2.4 0 0 0-3.4-3.4L4.8 15.6 4 20Z"/><path d="m14 6 4 4"/></>,
-    send: <><path d="m3 3 18 9-18 9 3.5-9L3 3Z"/><path d="M6.5 12H21"/></>,
-    chart: <><path d="M4 20V10m6 10V4m6 16v-7m5 7H2"/></>,
-    settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></>,
-    mic: <><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5 11a7 7 0 0 0 14 0m-7 7v3m-4 0h8"/></>,
-    text: <><path d="M5 6V4h14v2M12 4v16m-4 0h8"/></>,
-    image: <><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m4 17 5-4 3 3 3-2 5 4"/></>,
-    sparkles: <><path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3Z"/><path d="m19 14 .7 2.3L22 17l-2.3.7L19 20l-.7-2.3L16 17l2.3-.7L19 14ZM5 14l.7 2.3L8 17l-2.3.7L5 20l-.7-2.3L2 17l2.3-.7L5 14Z"/></>,
-    arrow: <><path d="M5 12h14m-5-5 5 5-5 5"/></>,
-    more: <><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/></>,
-    check: <path d="m5 12 4 4L19 6"/>,
-    link: <><path d="m10 13 4-4"/><path d="M7.5 15.5 5 18a3.5 3.5 0 0 1-5-5l3-3a3.5 3.5 0 0 1 5 0"/><path d="m14.5 8.5 2.5-2.5a3.5 3.5 0 0 1 5 5l-3 3a3.5 3.5 0 0 1-5 0"/></>,
-    quote: <><path d="M7 9H4v4h4V9c0-3-1-4-3-5m12 5h-3v4h4V9c0-3-1-4-3-5"/></>,
-    close: <path d="m6 6 12 12M18 6 6 18"/>,
-    chevron: <path d="m9 18 6-6-6-6"/>,
+type StoryCard = {
+  id: string;
+  status: "STORY_MINED";
+  visibility: "PRIVATE";
+  title: string;
+  event: string;
+  observation: string;
+  lesson: string;
+  source_refs: { label: string; excerpt: string }[];
+  angles: { id: string; label: string; focus: string }[];
+  drafts: {
+    channel: Channel;
+    content: string;
+    status: "NEEDS_REVIEW";
+    source_refs: string[];
+  }[];
+  quality_check: {
+    facts_grounded: boolean;
+    source_visible: boolean;
+    human_approval_required: boolean;
+    note: string;
   };
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
-}
-
-const channels = {
-  linkedin: { label: "LinkedIn", mark: "in", color: "blue" },
-  x: { label: "X", mark: "X", color: "black" },
-  instagram: { label: "Instagram", mark: "◎", color: "pink" },
-} as const;
-type ChannelKey = keyof typeof channels;
-
-const sampleDrafts: Record<ChannelKey, string> = {
-  linkedin: `AI 음성 에이전트를 테스트하며 뜻밖의 사실을 발견했습니다.\n\n결과를 가른 건 모델의 성능보다 ‘어떤 질문을 던지느냐’였습니다. 같은 모델도 질문의 순서와 맥락을 조금 바꾸자 전혀 다른 답을 내놓았습니다.\n\n새로운 도구를 고르는 일보다, 좋은 질문을 설계하고 빠르게 실험하는 일이 먼저일지 모릅니다. 오늘의 작은 테스트가 제 일하는 방식을 다시 보게 했습니다.`,
-  x: `AI 음성 에이전트를 테스트하며 느낀 것.\n\n모델 선택보다 질문 설계가 결과를 더 크게 바꿨다. 좋은 도구를 찾는 데 시간을 쓰기 전에, 좋은 질문을 만들고 빠르게 실험해 보는 것이 먼저다.`,
-  instagram: `좋은 AI를 찾는 것보다 좋은 질문을 만드는 일이 먼저였다. 🎙️\n\n오늘 음성 에이전트를 테스트하며 얻은 의외의 배움. 같은 모델도 질문의 순서와 맥락에 따라 결과가 완전히 달라졌다.\n\n#AI에이전트 #프로덕트빌딩 #오늘의배움`,
 };
 
-function Sidebar({ active, onNavigate }: { active: string; onNavigate: (item: string) => void }) {
-  const nav = [["홈", "home"], ["기록", "archive"], ["콘텐츠 스튜디오", "pen"], ["게시", "send"], ["인사이트", "chart"]] as const;
-  return <aside className="sidebar">
-    <button className="brand" onClick={() => onNavigate("홈")} aria-label="스토리로그 홈"><span className="brand-mark"><Icon name="sparkles" size={19}/></span><span>스토리로그</span></button>
-    <nav>{nav.map(([label, icon]) => <button key={label} className={active === label ? "active" : ""} onClick={() => onNavigate(label)}><Icon name={icon} size={19}/><span>{label}</span>{label === "콘텐츠 스튜디오" && <span className="nav-badge">2</span>}</button>)}</nav>
-    <div className="sidebar-bottom">
-      <div className="plan-card"><span className="plan-icon"><Icon name="sparkles" size={17}/></span><strong>이번 주 3개의 이야기</strong><p>조금씩 쌓이고 있어요</p><div className="progress"><span/></div><small>3 / 5 기록</small></div>
-      <button className="settings-button"><Icon name="settings" size={19}/> 설정</button>
-      <div className="profile"><div className="avatar">민</div><div><strong>김민준</strong><span>AI Product Builder</span></div><Icon name="more" size={19}/></div>
-    </div>
-  </aside>;
+const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
+const channels: Channel[] = ["LinkedIn", "X", "Instagram"];
+
+const prompts = [
+  { label: "오늘 새로 알게 된 것", hint: "처음 알게 된 사실이나 방법을 기록해 보세요." },
+  { label: "예상과 달랐던 것", hint: "기대와 실제가 달랐던 순간에서 이야기가 시작됩니다." },
+  { label: "누군가에게 말해 주고 싶은 것", hint: "같은 고민을 하는 사람에게 건넬 말을 적어 보세요." },
+  { label: "오늘 선택에서 배운 것", hint: "선택과 결과, 다음에 바꿀 점을 이어서 적어 보세요." },
+];
+
+const example = {
+  event: "오늘 팀 회의에서 새 기능을 크게 만드는 대신, 사용자가 실제로 반복하는 한 가지 행동부터 검증하기로 했다.",
+  unexpected: "기능 아이디어가 많을수록 설득력이 높을 거라 생각했지만, 팀은 가장 작은 실험에 더 빠르게 합의했다.",
+  lesson: "좋은 시작은 많은 기능이 아니라 한 가지 가설을 끝까지 검증하는 데서 나온다.",
+};
+
+function ArrowIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  );
 }
 
-function CaptureCard({ onCreated }: { onCreated: (text: string) => void }) {
-  const [mode, setMode] = useState<"text" | "voice" | "media">("text");
-  const [text, setText] = useState("");
-  function submit(event: FormEvent) { event.preventDefault(); if (!text.trim()) return; onCreated(text.trim()); setText(""); }
-  return <section className="capture-card">
-    <div className="capture-heading"><span className="capture-spark"><Icon name="sparkles" size={20}/></span><div><strong>오늘, 어떤 순간이 마음에 남았나요?</strong><p>완성된 글이 아니어도 괜찮아요. 편하게 남겨보세요.</p></div></div>
-    <form onSubmit={submit}>
-      {mode === "text" ? <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="오늘 새로 알게 된 것, 예상과 달랐던 일, 누군가에게 말해주고 싶은 것을 적어보세요." aria-label="오늘의 기록"/> : <div className="capture-placeholder"><span className={mode === "voice" ? "record-orb" : "upload-orb"}><Icon name={mode === "voice" ? "mic" : "image"} size={25}/></span><div><strong>{mode === "voice" ? "눌러서 음성 기록 시작" : "사진이나 영상을 이곳에 추가"}</strong><p>{mode === "voice" ? "최대 3분, 떠오르는 대로 이야기해 보세요" : "JPG, PNG, MP4 · 최대 200MB"}</p></div></div>}
-      <div className="capture-actions"><div className="mode-buttons"><button type="button" className={mode === "voice" ? "selected" : ""} onClick={() => setMode("voice")}><Icon name="mic" size={18}/> 말로 남기기</button><button type="button" className={mode === "text" ? "selected" : ""} onClick={() => setMode("text")}><Icon name="text" size={18}/> 글로 남기기</button><button type="button" className={mode === "media" ? "selected" : ""} onClick={() => setMode("media")}><Icon name="image" size={18}/> 사진·영상</button></div>{mode === "text" && <button className="submit-note" disabled={!text.trim()}>기록하기 <Icon name="arrow" size={17}/></button>}</div>
-    </form>
-  </section>;
+function MicIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <rect x="8" y="3" width="8" height="13" rx="4" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
+    </svg>
+  );
 }
 
-type Story = { id: number; tag: string; time: string; title: string; description: string; quote: string; topics: string[]; source: "voice" | "text" };
-
-function draftsFor(story: Story): Record<ChannelKey, string> {
-  if (story.id === 1) return sampleDrafts;
-  return {
-    linkedin: `${story.quote}\n\n이 경험에서 제가 발견한 건 ‘${story.title}’라는 관점이었습니다. 익숙하게 지나칠 수 있는 순간도 기록하고 다시 바라보면, 다음 선택을 바꾸는 배움이 됩니다.`,
-    x: `${story.quote}\n\n오늘의 한 줄: ${story.title}`,
-    instagram: `${story.quote}\n\n오늘의 작은 순간에서 발견한 생각.\n\n#오늘의기록 #나만의관점`,
-  };
+function TextIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M5 5h14M12 5v14M8 19h8" />
+    </svg>
+  );
 }
 
-function StoryCard({ story, onOpen }: { story: Story; onOpen: () => void }) {
-  return <article className="story-card">
-    <div className="story-meta"><span>{story.tag}</span><time>{story.time}</time><button aria-label="더 보기"><Icon name="more" size={20}/></button></div>
-    <button className="story-content" onClick={onOpen}><h3>{story.title}</h3><p>{story.description}</p><blockquote><Icon name="quote" size={17}/><span>{story.quote}</span></blockquote></button>
-    <div className="story-footer"><div>{story.topics.map((topic) => <span key={topic}>#{topic}</span>)}</div><button onClick={onOpen}>콘텐츠로 만들기 <Icon name="arrow" size={16}/></button></div>
-  </article>;
-}
-
-function Studio({ story, onClose }: { story: Story; onClose: () => void }) {
-  const [activeChannel, setActiveChannel] = useState<ChannelKey>("linkedin");
-  const [drafts, setDrafts] = useState(() => draftsFor(story));
-  const [approved, setApproved] = useState(false);
-  const config = channels[activeChannel];
-  const draft = drafts[activeChannel];
-  return <div className="studio-overlay" role="dialog" aria-modal="true" aria-label="콘텐츠 스튜디오"><div className="studio-shell">
-    <header className="studio-header"><div><span className="brand-mark small"><Icon name="sparkles" size={16}/></span><strong>콘텐츠 스튜디오</strong><span className="autosave"><i/> 저장됨</span></div><button onClick={onClose} aria-label="스튜디오 닫기"><Icon name="close" size={22}/></button></header>
-    <div className="studio-grid">
-      <aside className="source-panel"><span className="panel-label">원문과 근거</span><h2>{story.title}</h2><div className="source-type"><Icon name={story.source === "voice" ? "mic" : "text"} size={16}/> {story.source === "voice" ? "음성 기록 · 1분 12초" : "텍스트 기록"}</div><div className="transcript"><span>{story.source === "voice" ? "00:12" : "원문"}</span><p>“{story.quote}”</p></div>{story.source === "voice" && <div className="transcript"><span>00:31</span><p>“같은 모델이어도 질문을 어떻게 이어가느냐에 따라 답의 깊이가 정말 달랐어요.”</p></div>}<button className="source-link"><Icon name="link" size={16}/> 원문 전체 보기</button><div className="facts-card"><strong><Icon name="check" size={16}/> AI가 찾은 핵심</strong><dl><div><dt>관찰</dt><dd>{story.title}</dd></div><div><dt>배운 점</dt><dd>{story.description}</dd></div><div><dt>근거 수준</dt><dd>개인 경험</dd></div></dl></div></aside>
-      <main className="editor-panel"><div className="editor-top"><div><span className="panel-label">선택한 콘텐츠 각도</span><h1>{story.title}</h1></div><button className="angle-button">각도 바꾸기 <Icon name="chevron" size={15}/></button></div>
-        <div className="channel-tabs">{(Object.keys(channels) as ChannelKey[]).map((key) => <button key={key} className={activeChannel === key ? "active" : ""} onClick={() => { setActiveChannel(key); setApproved(false); }}><span className={`channel-mark ${channels[key].color}`}>{channels[key].mark}</span>{channels[key].label}{activeChannel === key && <i/>}</button>)}</div>
-        <div className="draft-card"><div className="draft-profile"><div className="avatar">민</div><div><strong>김민준</strong><span>AI Product Builder · 지금</span></div><span className="ai-edited"><Icon name="sparkles" size={13}/> AI 초안</span></div><textarea value={draft} onChange={(e) => setDrafts({ ...drafts, [activeChannel]: e.target.value })} aria-label={`${config.label} 초안`}/><div className="draft-count">{draft.length}자 · 직접 수정할 수 있어요</div></div>
-        <div className="quality-row"><div className="quality-score"><span>4.7</span><div><strong>품질 검사 통과</strong><p>개인성 · 사실성 · 말투가 좋아요</p></div></div><div className="quality-checks"><span><Icon name="check" size={14}/> 원문 근거 확인</span><span><Icon name="check" size={14}/> 민감 정보 없음</span><span><Icon name="check" size={14}/> 말투 적합</span></div></div>
-        <div className="studio-actions"><button className="secondary-action">초안 저장</button><button className={approved ? "approve-button approved" : "approve-button"} onClick={() => setApproved(true)}><Icon name="check" size={18}/>{approved ? "승인 완료 · 게시 대기" : `${config.label} 초안 승인`}</button></div>
-      </main>
-    </div>
-  </div></div>;
+function MediaIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="9" cy="10" r="2" />
+      <path d="m5 17 4-4 3 3 2-2 5 3" />
+    </svg>
+  );
 }
 
 export default function Home() {
-  const [active, setActive] = useState("홈");
-  const [studioStory, setStudioStory] = useState<Story | null>(null);
-  const [notice, setNotice] = useState("");
-  const [stories, setStories] = useState<Story[]>([
-    { id: 1, tag: "AI가 발견한 이야기", time: "오늘 · 10:42", title: "좋은 AI보다 좋은 질문이 먼저였다", description: "음성 에이전트 실험에서 모델의 성능보다 질문을 설계하는 방식이 결과를 더 크게 바꾼다는 것을 발견했어요.", quote: "기술보다 질문 설계가 더 중요하다는 게 의외였어요.", topics: ["AI에이전트", "질문설계"], source: "voice" },
-    { id: 2, tag: "어제의 기록", time: "어제 · 21:18", title: "사용자는 기능이 아니라 안심을 선택한다", description: "새 기능을 설명할 때 성능보다 사용자가 통제권을 갖고 있다는 점에 더 크게 반응했던 인터뷰를 정리했어요.", quote: "자동화보다 중요한 건 언제든 멈출 수 있다는 믿음이었다.", topics: ["제품기획", "사용자인터뷰"], source: "text" },
-  ]);
-  const today = useMemo(() => new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(new Date()), []);
-  function createStory(text: string) { const compact = text.replace(/\s+/g, " "); const title = compact.length > 32 ? `${compact.slice(0, 31)}…` : compact; const story: Story = { id: Date.now(), tag: "방금 남긴 기록", time: "지금", title, description: "방금 남긴 기록에서 나만의 관점과 콘텐츠가 될 만한 문장을 찾고 있어요.", quote: compact, topics: ["오늘의기록", "새로운관점"], source: "text" }; setStories([story, ...stories]); setNotice("기록을 저장하고 스토리 카드를 만들었어요."); window.setTimeout(() => setNotice(""), 2800); }
-  return <div className="app-shell">
-    <Sidebar active={active} onNavigate={(item) => { setActive(item); if (item === "콘텐츠 스튜디오") setStudioStory(stories[0]); }}/>
-    <main className="dashboard"><header className="topbar"><div className="mobile-brand"><span className="brand-mark"><Icon name="sparkles" size={18}/></span><strong>스토리로그</strong></div><div className="date-pill">{today}</div><div className="top-actions"><button className="streak">🔥 <strong>4일째 기록 중</strong></button><button className="notification" aria-label="알림">●</button></div></header>
-      <div className="content-wrap"><section className="welcome"><p>안녕하세요, 민준님</p><h1>오늘의 이야기를 들려주세요.</h1><span>작은 순간도 쌓이면 나만의 콘텐츠가 됩니다.</span></section><CaptureCard onCreated={createStory}/>
-        <section className="story-section"><div className="section-heading"><div><h2>콘텐츠가 될 이야기</h2><p>기록 속에서 발견한 민준님만의 관점이에요.</p></div><button>모두 보기 <Icon name="arrow" size={16}/></button></div><div className="story-grid">{stories.slice(0, 2).map((story) => <StoryCard key={story.id} story={story} onOpen={() => setStudioStory(story)}/>)}</div></section>
-        <section className="week-section"><div><span className="week-icon"><Icon name="chart" size={21}/></span><div><strong>이번 주, 이야기가 이렇게 자랐어요</strong><p>기록 3개에서 콘텐츠 초안 7개를 만들고 2개를 승인했어요.</p></div></div><div className="week-stats"><span><strong>3</strong>기록</span><i/><span><strong>7</strong>초안</span><i/><span className="accent"><strong>2</strong>승인</span></div></section>
-      </div>
-    </main>
-    {studioStory && <Studio story={studioStory} onClose={() => { setStudioStory(null); setActive("홈"); }}/>} {notice && <div className="toast"><Icon name="check" size={18}/>{notice}</div>}
-  </div>;
+  const [activePrompt, setActivePrompt] = useState(0);
+  const [eventText, setEventText] = useState("");
+  const [unexpected, setUnexpected] = useState("");
+  const [lesson, setLesson] = useState("");
+  const [audience, setAudience] = useState("비슷한 고민을 하는 사람");
+  const [selectedChannels, setSelectedChannels] = useState<Channel[]>(channels);
+  const [story, setStory] = useState<StoryCard | null>(null);
+  const [activeChannel, setActiveChannel] = useState<Channel>("LinkedIn");
+  const [activeAngle, setActiveAngle] = useState("lesson");
+  const [feedback, setFeedback] = useState<"mine" | "fact" | "risk" | null>(null);
+  const [approved, setApproved] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [capabilityNotice, setCapabilityNotice] = useState("");
+
+  const activeDraft = useMemo(
+    () => story?.drafts.find((draft) => draft.channel === activeChannel) ?? story?.drafts[0],
+    [activeChannel, story],
+  );
+
+  function loadExample() {
+    setEventText(example.event);
+    setUnexpected(example.unexpected);
+    setLesson(example.lesson);
+  }
+
+  function toggleChannel(channel: Channel) {
+    setSelectedChannels((current) => {
+      if (current.includes(channel)) {
+        return current.length === 1 ? current : current.filter((item) => item !== channel);
+      }
+      return [...current, channel];
+    });
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setStatus("loading");
+    setApproved(false);
+    setFeedback(null);
+    setCopied(false);
+
+    try {
+      const response = await fetch(`${apiUrl}/api/story-cards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: eventText,
+          unexpected,
+          lesson,
+          audience,
+          channels: selectedChannels,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Story card request failed");
+      const nextStory = (await response.json()) as StoryCard;
+      setStory(nextStory);
+      setActiveChannel(nextStory.drafts[0].channel);
+      setActiveAngle(nextStory.angles[0].id);
+      setStatus("idle");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  async function copyDraft() {
+    if (!activeDraft) return;
+    await navigator.clipboard.writeText(activeDraft.content);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  }
+
+  function showComingSoon(type: "voice" | "media") {
+    setCapabilityNotice(
+      type === "voice"
+        ? "음성 기록·자동 전사는 다음 구현 단계입니다. 지금은 텍스트 기록 흐름을 끝까지 검증합니다."
+        : "사진·영상 근거 연결은 다음 구현 단계입니다. 지금은 텍스트 기록을 사용할 수 있습니다.",
+    );
+  }
+
+  return (
+    <div className="site-shell">
+      <header className="site-header">
+        <a className="brand" href="#top" aria-label="스토리로그 홈">
+          <span className="brand-mark">S</span>
+          <span>STORYLOG</span>
+        </a>
+        <nav aria-label="주요 메뉴">
+          <a className="active" href="#capture">오늘의 기록</a>
+          <a href="#workflow">작동 방식</a>
+          <a href="#monetize">수익화</a>
+          <a href={`${apiUrl}/docs`}>API</a>
+        </nav>
+        <a className="header-cta" href="#capture">
+          오늘 기록하기 <ArrowIcon />
+        </a>
+      </header>
+
+      <main id="top">
+        <section className="hero" aria-labelledby="hero-title">
+          <div className="hero-copy">
+            <p className="eyebrow"><span /> FROM REAL DAY TO REAL INFLUENCE</p>
+            <h1 id="hero-title">
+              나의 하루가<br />
+              <em>나다운 콘텐츠가 된다.</em>
+            </h1>
+            <p className="hero-description">
+              잘 쓰려고 멈추지 마세요. 오늘 겪은 일을 편하게 남기면,
+              스토리로그가 근거와 관점을 정리해 채널별 초안으로 연결합니다.
+              게시 전 마지막 결정은 언제나 당신이 합니다.
+            </p>
+            <div className="hero-actions">
+              <a className="primary-button" href="#capture">
+                1분 기록 시작하기 <ArrowIcon />
+              </a>
+              <span className="plain-note">가입 없이 체험 · 원본은 비공개</span>
+            </div>
+          </div>
+
+          <div className="hero-board" aria-label="기록이 콘텐츠가 되는 과정">
+            <div className="board-top">
+              <span>TODAY&apos;S STORY PIPELINE</span>
+              <strong>3 MIN</strong>
+            </div>
+            <article className="source-preview">
+              <span>01 · PRIVATE SOURCE</span>
+              <p>“오늘 회의에서 기능을 늘리기보다<br />한 가지 행동부터 검증하기로 했다.”</p>
+              <small>나만 볼 수 있는 원본 기록</small>
+            </article>
+            <div className="board-connector"><i /><b>실제 표현만 추출</b></div>
+            <article className="story-preview">
+              <div><span>02 · STORY CARD</span><b>근거 1개</b></div>
+              <h2>좋은 시작은 한 가지<br />가설에서 나온다</h2>
+              <p>경험 · 관찰 · 배운 점</p>
+            </article>
+            <div className="draft-preview">
+              <span>03 · NEEDS YOUR APPROVAL</span>
+              <strong>LinkedIn</strong><strong>X</strong><strong>Instagram</strong>
+            </div>
+          </div>
+        </section>
+
+        <section className="promise-strip" id="workflow" aria-label="서비스 핵심 원칙">
+          <div><span>01</span><strong>기록이 먼저</strong><p>빈 프롬프트 대신 오늘을 묻는 질문으로 시작</p></div>
+          <div><span>02</span><strong>근거가 보이게</strong><p>AI가 만든 문장과 내 원본을 언제든 비교</p></div>
+          <div><span>03</span><strong>승인은 사람이</strong><p>사실·표현·공개 범위를 확인한 뒤에만 게시</p></div>
+        </section>
+
+        <section className="capture-section" id="capture" aria-labelledby="capture-title">
+          <div className="section-heading">
+            <div>
+              <p className="section-kicker">TODAY&apos;S CAPTURE</p>
+              <h2 id="capture-title">오늘은 어떤 이야기가<br />있었나요?</h2>
+            </div>
+            <p>완성된 글이 아니어도 괜찮아요.<br />사실과 느낌을 평소 말투로 남겨 주세요.</p>
+          </div>
+
+          <div className="capture-modes" aria-label="기록 방식 선택">
+            <button type="button" onClick={() => showComingSoon("voice")}>
+              <span className="mode-icon"><MicIcon /></span>
+              <span><b>말로 남기기</b><small>음성 자동 전사 · 다음 단계</small></span>
+              <i>SOON</i>
+            </button>
+            <button className="available" type="button" onClick={() => setCapabilityNotice("")}>
+              <span className="mode-icon"><TextIcon /></span>
+              <span><b>글로 남기기</b><small>지금 바로 사용 가능</small></span>
+              <i>LIVE</i>
+            </button>
+            <button type="button" onClick={() => showComingSoon("media")}>
+              <span className="mode-icon"><MediaIcon /></span>
+              <span><b>사진·영상 추가</b><small>미디어 근거 연결 · 다음 단계</small></span>
+              <i>SOON</i>
+            </button>
+          </div>
+          {capabilityNotice && <p className="capability-notice" role="status">{capabilityNotice}</p>}
+
+          <div className="prompt-label">
+            <span>무엇을 쓸지 막막하다면, 하나를 골라 보세요.</span>
+            <button type="button" onClick={loadExample}>예시 기록 불러오기 ↗</button>
+          </div>
+          <div className="prompt-grid">
+            {prompts.map((prompt, index) => (
+              <button
+                className={activePrompt === index ? "active" : ""}
+                key={prompt.label}
+                type="button"
+                onClick={() => setActivePrompt(index)}
+              >
+                <span>0{index + 1}</span>
+                <strong>{prompt.label}</strong>
+                <small>{prompt.hint}</small>
+              </button>
+            ))}
+          </div>
+
+          <div className="studio-layout">
+            <form className="capture-form" onSubmit={handleSubmit}>
+              <div className="form-topline">
+                <div>
+                  <span>PRIVATE SOURCE</span>
+                  <h3>{prompts[activePrompt].label}</h3>
+                </div>
+                <b><i /> 나만 보기</b>
+              </div>
+
+              <label>
+                <span>무슨 일이 있었나요?</span>
+                <textarea
+                  value={eventText}
+                  onChange={(event) => setEventText(event.target.value)}
+                  placeholder={prompts[activePrompt].hint}
+                  minLength={10}
+                  maxLength={2000}
+                  required
+                />
+                <small>{eventText.length} / 2,000</small>
+              </label>
+
+              <label>
+                <span>예상과 달랐던 점은 무엇인가요? <i>선택</i></span>
+                <textarea
+                  className="compact"
+                  value={unexpected}
+                  onChange={(event) => setUnexpected(event.target.value)}
+                  placeholder="뜻밖이었던 반응, 감정, 결과를 적어 주세요."
+                  maxLength={1000}
+                />
+              </label>
+
+              <label>
+                <span>그래서 무엇을 배웠나요?</span>
+                <textarea
+                  className="compact"
+                  value={lesson}
+                  onChange={(event) => setLesson(event.target.value)}
+                  placeholder="다음에는 어떻게 해 보고 싶은지 한 문장으로 남겨 보세요."
+                  minLength={3}
+                  maxLength={1000}
+                  required
+                />
+              </label>
+
+              <div className="form-options">
+                <label>
+                  <span>누구에게 들려줄까요?</span>
+                  <input value={audience} onChange={(event) => setAudience(event.target.value)} minLength={2} maxLength={100} required />
+                </label>
+                <fieldset>
+                  <legend>초안 채널</legend>
+                  <div>
+                    {channels.map((channel) => (
+                      <button
+                        className={selectedChannels.includes(channel) ? "selected" : ""}
+                        type="button"
+                        key={channel}
+                        onClick={() => toggleChannel(channel)}
+                      >
+                        {selectedChannels.includes(channel) ? "✓ " : "+ "}{channel}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+              </div>
+
+              <div className="privacy-note">
+                <span>🔒</span>
+                <p><b>원본은 공개되지 않습니다.</b> 생성된 초안은 사용자가 승인하기 전까지 게시되지 않아요.</p>
+              </div>
+
+              <button className="submit-button" type="submit" disabled={status === "loading"}>
+                {status === "loading" ? "스토리를 정리하는 중..." : "내 스토리 카드 만들기"}
+                {status !== "loading" && <ArrowIcon />}
+              </button>
+              {status === "error" && <p className="form-error">API에 연결할 수 없습니다. 백엔드 실행 상태를 확인해 주세요.</p>}
+            </form>
+
+            <div className={`story-result ${story ? "has-story" : ""}`} aria-live="polite">
+              {!story ? (
+                <div className="empty-story">
+                  <div className="empty-card-mark">✦</div>
+                  <span>YOUR STORY CARD</span>
+                  <h3>내 기록 속에서<br />이야깃거리를 발견해요.</h3>
+                  <p>경험·관찰·배운 점을 분리하고, 모든 초안에 원본 근거를 남깁니다.</p>
+                  <div className="empty-state-list">
+                    <i>CAPTURED</i><b>→</b><i>STORY_MINED</i><b>→</b><i>NEEDS_REVIEW</i>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="story-header">
+                    <div><span>{story.status.replace("_", " ")}</span><h3>{story.title}</h3></div>
+                    <b>🔒 {story.visibility}</b>
+                  </div>
+
+                  <div className="story-facts">
+                    <article><span>경험</span><p>{story.event}</p></article>
+                    <article><span>관찰</span><p>{story.observation}</p></article>
+                    <article><span>배운 점</span><p>{story.lesson}</p></article>
+                  </div>
+
+                  <div className="source-box">
+                    <span>↳ SOURCE EVIDENCE · {story.source_refs[0].label}</span>
+                    <blockquote>“{story.source_refs[0].excerpt}”</blockquote>
+                  </div>
+
+                  <div className="angle-picker">
+                    <span>이야기 각도</span>
+                    <div>
+                      {story.angles.map((angle) => (
+                        <button
+                          className={activeAngle === angle.id ? "selected" : ""}
+                          key={angle.id}
+                          type="button"
+                          onClick={() => setActiveAngle(angle.id)}
+                          title={angle.focus}
+                        >
+                          {angle.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="draft-studio">
+                    <div className="draft-tabs">
+                      {story.drafts.map((draft) => (
+                        <button
+                          className={activeDraft?.channel === draft.channel ? "active" : ""}
+                          key={draft.channel}
+                          type="button"
+                          onClick={() => setActiveChannel(draft.channel)}
+                        >
+                          {draft.channel}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="draft-meta"><span>CHANNEL DRAFT</span><b>REVIEW NEEDED</b></div>
+                    <textarea aria-label={`${activeDraft?.channel ?? "채널"} 초안`} value={activeDraft?.content ?? ""} readOnly />
+                    <div className="draft-source"><span>근거 연결됨</span><b>오늘의 텍스트 기록 1</b></div>
+                  </div>
+
+                  <div className="quality-note">
+                    <span>✓ 사실 근거</span><span>✓ 원본 표시</span><span>✓ 승인 필수</span>
+                    <p>{story.quality_check.note}</p>
+                  </div>
+
+                  <div className="feedback-row" aria-label="스토리 카드 피드백">
+                    <button className={feedback === "mine" ? "active" : ""} type="button" onClick={() => setFeedback("mine")}>이건 나를 잘 표현해요</button>
+                    <button className={feedback === "fact" ? "active warning" : ""} type="button" onClick={() => setFeedback("fact")}>사실과 달라요</button>
+                    <button className={feedback === "risk" ? "active warning" : ""} type="button" onClick={() => setFeedback("risk")}>공개가 걱정돼요</button>
+                  </div>
+
+                  <div className="approval-row">
+                    <button className="copy-button" type="button" onClick={copyDraft}>{copied ? "복사했어요 ✓" : "초안 복사"}</button>
+                    <button className="approve-button" type="button" onClick={() => setApproved(true)} disabled={approved}>
+                      {approved ? "승인 완료 ✓" : "검토하고 승인하기"}
+                    </button>
+                  </div>
+                  {approved && <p className="approved-message">APPROVED · 게시 가능한 콘텐츠 자산으로 저장할 준비가 되었습니다.</p>}
+                </>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="metric-section" aria-labelledby="metric-title">
+          <div>
+            <p className="section-kicker">THE ONE METRIC THAT MATTERS</p>
+            <h2 id="metric-title">기록 수보다 중요한 건<br /><em>내가 승인한 콘텐츠 수.</em></h2>
+          </div>
+          <div className="metric-flow">
+            <article><span>01</span><b>기록 완료</b><small>오늘을 남겼는가</small></article>
+            <i>→</i>
+            <article><span>02</span><b>스토리 채택</b><small>“이건 내 이야기”인가</small></article>
+            <i>→</i>
+            <article><span>03</span><b>초안 승인</b><small>믿고 공개할 수 있는가</small></article>
+            <i>→</i>
+            <article><span>04</span><b>게시·복사</b><small>세상에 전달했는가</small></article>
+          </div>
+        </section>
+
+        <section className="monetize-section" id="monetize" aria-labelledby="monetize-title">
+          <div className="monetize-intro">
+            <p className="section-kicker">FROM STORY TO OPPORTUNITY</p>
+            <h2 id="monetize-title">수익화는 팔로워보다<br />쌓인 이야기에서 시작됩니다.</h2>
+            <p>반복해서 승인한 콘텐츠는 나의 관점과 전문성을 보여 주는 자산이 됩니다. 먼저 신뢰를 만들고, 작은 수익 실험으로 연결하세요.</p>
+          </div>
+
+          <div className="revenue-grid">
+            <article>
+              <span className="path-number">01</span><div className="path-icon">✦</div>
+              <span className="readiness">CONTENT ASSET</span><h3>나다운 콘텐츠 축적</h3>
+              <p>실제 경험과 승인 기록을 쌓아 내가 꾸준히 말할 수 있는 주제를 발견합니다.</p><strong>매주 승인 콘텐츠 수를 핵심 지표로</strong>
+            </article>
+            <article>
+              <span className="path-number">02</span><div className="path-icon">↗</div>
+              <span className="readiness">FIRST REVENUE</span><h3>UGC·제휴 실험</h3>
+              <p>대표 콘텐츠를 포트폴리오로 묶고, 실제로 사용한 제품과 경험부터 제안합니다.</p><strong>작은 유료 제작·추천 전환부터 검증</strong>
+            </article>
+            <article>
+              <span className="path-number">03</span><div className="path-icon">◎</div>
+              <span className="readiness">LATER STAGE</span><h3>브랜드 협업 연결</h3>
+              <p>충분한 콘텐츠·성과 데이터가 쌓인 뒤 브랜드와 맞는 크리에이터를 연결합니다.</p><strong>B2B2C 매칭은 신뢰 검증 이후</strong>
+            </article>
+          </div>
+        </section>
+
+        <section className="final-cta">
+          <span>YOUR DAY IS ALREADY A STORY.</span>
+          <h2>인플루언서가 된 다음 기록하는 게 아니라,<br /><em>기록하며 영향력을 만듭니다.</em></h2>
+          <a href="#capture">오늘의 기록 남기기 <ArrowIcon /></a>
+        </section>
+      </main>
+
+      <footer>
+        <a className="brand" href="#top"><span className="brand-mark">S</span><span>STORYLOG</span></a>
+        <p>실제 경험이 나다운 영향력이 되도록.</p>
+        <span>© 2026 Storylog</span>
+      </footer>
+    </div>
+  );
 }

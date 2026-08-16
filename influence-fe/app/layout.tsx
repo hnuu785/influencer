@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "스토리로그 — 나의 하루가 콘텐츠가 됩니다",
-  description: "일상의 기록을 나다운 퍼스널 브랜딩 콘텐츠로 바꾸는 AI 워크플로우",
+  title: "Storylog — 나의 하루가 나다운 콘텐츠가 된다",
+  description: "실제 경험을 근거가 보이는 스토리 카드와 채널별 콘텐츠로 바꾸는 개인 브랜딩 워크플로우",
 };
 
 export default function RootLayout({
@@ -12,7 +12,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko">
+    <html lang="ko" data-scroll-behavior="smooth">
       <body>{children}</body>
     </html>
   );

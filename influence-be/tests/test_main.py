@@ -117,6 +117,41 @@ def test_cors_does_not_allow_unknown_origin():
     assert "access-control-allow-origin" not in response.headers
 
 
+def test_story_card_uses_only_submitted_source_content():
+    payload = {
+        "event": "오늘 회의에서 큰 기능보다 한 가지 행동을 먼저 검증하기로 했다.",
+        "unexpected": "아이디어가 많아도 작은 실험에 더 빠르게 합의했다.",
+        "lesson": "좋은 시작은 한 가지 가설을 끝까지 검증하는 데서 나온다.",
+        "audience": "처음 제품을 만드는 사람",
+        "channels": ["LinkedIn", "X", "Instagram"],
+    }
+
+    with make_client() as client:
+        response = client.post("/api/story-cards", json=payload)
+
+    assert response.status_code == 200
+    story = response.json()
+    assert story["status"] == "STORY_MINED"
+    assert story["visibility"] == "PRIVATE"
+    assert story["source_refs"][0]["excerpt"] == payload["event"]
+    assert [draft["channel"] for draft in story["drafts"]] == [
+        "LinkedIn",
+        "X",
+        "Instagram",
+    ]
+    assert all(draft["status"] == "NEEDS_REVIEW" for draft in story["drafts"])
+
+
+def test_story_card_rejects_too_short_source():
+    with make_client() as client:
+        response = client.post(
+            "/api/story-cards",
+            json={"event": "짧음", "lesson": "배움"},
+        )
+
+    assert response.status_code == 422
+
+
 def test_database_ssl_require_enables_encryption_context():
     connect_args = Settings(db_ssl="require").database_connect_args()
 
