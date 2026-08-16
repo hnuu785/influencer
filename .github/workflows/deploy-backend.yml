@@ -102,8 +102,15 @@ jobs:
         env:
           REPOSITORY_URI: ${{ steps.platform.outputs.repository_uri }}
         run: |
-          docker build --tag "$REPOSITORY_URI:$GITHUB_SHA" influence-be
-          docker push "$REPOSITORY_URI:$GITHUB_SHA"
+          if aws ecr describe-images \
+            --region "$AWS_REGION" \
+            --repository-name influence-backend \
+            --image-ids "imageTag=$GITHUB_SHA" >/dev/null 2>&1; then
+            echo "Reusing existing immutable image for $GITHUB_SHA"
+          else
+            docker build --tag "$REPOSITORY_URI:$GITHUB_SHA" influence-be
+            docker push "$REPOSITORY_URI:$GITHUB_SHA"
+          fi
 
       - name: Resolve image digest
         id: image
