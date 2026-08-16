@@ -12,8 +12,9 @@ All commands below use `ap-northeast-2`.
   NAT Gateway. The tasks accept inbound traffic only through security groups
   managed by Express Mode. RDS accepts PostgreSQL traffic only from the ECS task
   security group.
-- The artifact S3 bucket is private and encrypted. It is not used by the current
-  application yet.
+- The artifact S3 bucket is private and encrypted. The backend issues short-lived
+  presigned PUT URLs so browsers upload media directly without AWS credentials.
+  Records store private S3 object references and never expose public object URLs.
 - Redis, Runpod workers, a custom domain, and a staging environment are not
   created.
 

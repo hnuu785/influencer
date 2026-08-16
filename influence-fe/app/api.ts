@@ -40,6 +40,56 @@ export async function api<T>(
   return response.json() as Promise<T>;
 }
 
+type UploadPreparation = {
+  mode: "multipart" | "s3";
+  uploads: Array<{
+    upload_url: string;
+    upload_token: string;
+    headers: Record<string, string>;
+  }>;
+};
+
+export async function uploadMediaFiles(
+  files: File[],
+): Promise<{ mode: "multipart" | "s3"; uploadTokens: string[] }> {
+  if (files.length === 0) return { mode: "multipart", uploadTokens: [] };
+  const preparation = await api<UploadPreparation>("/api/uploads/prepare", {
+    method: "POST",
+    body: JSON.stringify({
+      files: files.map((file) => ({
+        filename: file.name,
+        content_type: file.type,
+        size_bytes: file.size,
+      })),
+    }),
+  });
+  if (preparation.mode === "multipart") {
+    return { mode: "multipart", uploadTokens: [] };
+  }
+  if (preparation.uploads.length !== files.length) {
+    throw new ApiError(502, "업로드 준비 결과를 확인할 수 없습니다.");
+  }
+  await Promise.all(
+    preparation.uploads.map(async (prepared, index) => {
+      const response = await fetch(prepared.upload_url, {
+        method: "PUT",
+        headers: prepared.headers,
+        body: files[index],
+      });
+      if (!response.ok) {
+        throw new ApiError(
+          response.status,
+          `${files[index].name} 업로드에 실패했습니다. 다시 시도해 주세요.`,
+        );
+      }
+    }),
+  );
+  return {
+    mode: "s3",
+    uploadTokens: preparation.uploads.map((item) => item.upload_token),
+  };
+}
+
 export async function downloadExport(
   recordId: string,
   packageIds: string[],

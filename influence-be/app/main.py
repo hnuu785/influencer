@@ -14,12 +14,15 @@ from app.ai import create_ai_provider
 from app.api import router as api_router
 from app.config import Settings
 from app.database import cleanup_expired_data, initialize_database
+from app.storage import MediaStorage
 
 
-async def _retention_worker(session_factory: async_sessionmaker) -> None:
+async def _retention_worker(
+    session_factory: async_sessionmaker, storage: MediaStorage
+) -> None:
     while True:
         try:
-            await cleanup_expired_data(session_factory)
+            await cleanup_expired_data(session_factory, storage)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -32,6 +35,7 @@ def create_app(
     *,
     engine: AsyncEngine | Any | None = None,
     redis_client: Redis | Any | None = None,
+    storage: MediaStorage | Any | None = None,
     initialize_schema: bool | None = None,
 ) -> FastAPI:
     app_settings = settings or Settings.from_env()
@@ -51,6 +55,7 @@ def create_app(
         if app.state.redis is None and app_settings.redis_url is not None:
             app.state.redis = Redis.from_url(app_settings.redis_url)
         app.state.settings = app_settings
+        app.state.storage = storage or MediaStorage(app_settings)
         app.state.session_factory = async_sessionmaker(
             app.state.db, expire_on_commit=False
         )
@@ -60,7 +65,9 @@ def create_app(
             await initialize_database(app.state.db, app.state.session_factory)
 
         retention_task = (
-            asyncio.create_task(_retention_worker(app.state.session_factory))
+            asyncio.create_task(
+                _retention_worker(app.state.session_factory, app.state.storage)
+            )
             if should_initialize_schema
             else None
         )

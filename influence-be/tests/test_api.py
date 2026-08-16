@@ -1,15 +1,17 @@
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.config import Settings
 from app.ai import minimize_personal_data
+from app.config import Settings
 from app.main import create_app
+from app.storage import PreparedUpload
 
 
-def make_mvp_client(tmp_path) -> TestClient:
+def make_mvp_client(tmp_path, *, storage=None) -> TestClient:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     settings = Settings(
         redis_url=None,
@@ -17,8 +19,64 @@ def make_mvp_client(tmp_path) -> TestClient:
         cors_origins=("http://localhost:3001",),
     )
     return TestClient(
-        create_app(settings, engine=engine, initialize_schema=True)
+        create_app(
+            settings,
+            engine=engine,
+            storage=storage,
+            initialize_schema=True,
+        )
     )
+
+
+class FakeS3Storage:
+    mode = "s3"
+    presign_ttl_seconds = 300
+
+    def __init__(self):
+        self.stored_references = []
+
+    async def prepare_upload(self, user_id, filename, content_type):
+        return PreparedUpload(
+            key=f"pending/{user_id}/prepared.png",
+            url="https://example-bucket.s3.ap-northeast-2.amazonaws.com/prepared.png",
+            headers={"Content-Type": content_type},
+        )
+
+    async def materialize_pending(
+        self, key, expected_size, expected_content_type, directory
+    ):
+        assert key.endswith("prepared.png")
+        assert expected_content_type == "image/png"
+        directory.mkdir(parents=True, exist_ok=True)
+        target = directory / "downloaded.png"
+        target.write_bytes(b"test-image")
+        assert expected_size == target.stat().st_size
+        return target, target.stat().st_size
+
+    async def store_record_file(
+        self,
+        path,
+        user_id,
+        record_id,
+        content_type,
+        *,
+        pending_key=None,
+    ):
+        assert Path(path).exists()
+        assert pending_key and pending_key.startswith(f"pending/{user_id}/")
+        reference = f"s3://test-bucket/records/{user_id}/{record_id}/photo.png"
+        self.stored_references.append(reference)
+        return reference
+
+    async def delete(self, reference):
+        if reference in self.stored_references:
+            self.stored_references.remove(reference)
+
+    async def materialize(self, reference, directory):
+        directory.mkdir(parents=True, exist_ok=True)
+        target = directory / "photo.png"
+        target.write_bytes(b"test-image")
+        return target
 
 
 def login(client: TestClient) -> None:
@@ -202,6 +260,65 @@ def test_photo_can_be_combined_with_text_in_one_record(tmp_path):
             "text",
             "photo",
         }
+
+
+def test_s3_photo_upload_is_prepared_and_attached_to_record(tmp_path):
+    storage = FakeS3Storage()
+    with make_mvp_client(tmp_path, storage=storage) as client:
+        login(client)
+        prepared = client.post(
+            "/api/uploads/prepare",
+            json={
+                "files": [
+                    {
+                        "filename": "work.png",
+                        "content_type": "image/png",
+                        "size_bytes": len(b"test-image"),
+                    }
+                ]
+            },
+        )
+        assert prepared.status_code == 200
+        assert prepared.json()["mode"] == "s3"
+
+        response = client.post(
+            "/api/records",
+            data={
+                "text": "S3 사진 업로드 테스트",
+                "calendar_context_json": "[]",
+                "uploaded_files_json": json.dumps(
+                    [prepared.json()["uploads"][0]["upload_token"]]
+                ),
+                "rights_confirmed": "true",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["sources"][1]["filename"] == "work.png"
+        assert storage.stored_references[0].startswith("s3://test-bucket/records/")
+        deleted = client.delete(f"/api/records/{response.json()['id']}")
+        assert deleted.status_code == 204
+        assert storage.stored_references == []
+
+
+def test_unsupported_photo_format_is_rejected_before_upload(tmp_path):
+    with make_mvp_client(tmp_path) as client:
+        login(client)
+        response = client.post(
+            "/api/uploads/prepare",
+            json={
+                "files": [
+                    {
+                        "filename": "iphone.heic",
+                        "content_type": "image/heic",
+                        "size_bytes": 100,
+                    }
+                ]
+            },
+        )
+
+    assert response.status_code == 422
+    assert "JPG" in response.json()["detail"]
 
 
 def test_direct_identifiers_are_removed_before_model_context():

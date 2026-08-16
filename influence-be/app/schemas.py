@@ -69,6 +69,27 @@ class RecordResponse(BaseModel):
     calendar_context: list[CalendarEventSchema]
 
 
+class UploadPrepareItem(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(min_length=1, max_length=120)
+    size_bytes: int = Field(gt=0)
+
+
+class UploadPrepareRequest(BaseModel):
+    files: list[UploadPrepareItem] = Field(min_length=1, max_length=10)
+
+
+class PreparedUploadResponse(BaseModel):
+    upload_url: str
+    upload_token: str
+    headers: dict[str, str]
+
+
+class UploadPrepareResponse(BaseModel):
+    mode: Literal["multipart", "s3"]
+    uploads: list[PreparedUploadResponse] = Field(default_factory=list)
+
+
 class InterviewQuestion(BaseModel):
     id: str
     text: str

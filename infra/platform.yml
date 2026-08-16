@@ -242,6 +242,10 @@ Resources:
             Status: Enabled
             AbortIncompleteMultipartUpload:
               DaysAfterInitiation: 7
+          - Id: RemoveAbandonedPendingUploads
+            Status: Enabled
+            Prefix: pending/
+            ExpirationInDays: 1
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced

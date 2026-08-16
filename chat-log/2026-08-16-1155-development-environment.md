@@ -1097,3 +1097,66 @@
 
 - Commit and merge the workflow change to `main`. The new commit will trigger deployment, while future reruns of a SHA will safely reuse its existing ECR image.
 - Platform deployment should be a no-op, then Service creation should retry with the ECS role fully propagated.
+
+## Turn 28
+
+### User (hnuu785) — 2026-08-16 16:53 KST
+
+> 왜 Deploy가 또 실패했어?
+>
+> Attached: GitHub Actions screenshot and the `Verify deployed image and endpoints` curl log.
+
+### Codex response and decisions
+
+- Determined that the deployment itself succeeded; only the final smoke-test step failed.
+- Found that the CloudFormation `ApiUrl` output currently contains a hostname without a URL scheme. The workflow passed it directly to curl, so curl attempted plain HTTP on port 80, while ECS Express serves HTTPS.
+- Verified the same endpoint over HTTPS instead of assuming the service was unhealthy.
+- Did not change the workflow because this turn requested diagnosis.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- `influence-service-prod`: `CREATE_COMPLETE`.
+- ECS Express service status: `ACTIVE`.
+- `GET https://<ECS endpoint>/health`: HTTP 200 with `{"status":"ok"}`.
+- `GET https://<ECS endpoint>/ready`: HTTP 200 with PostgreSQL `ok` and Redis `not_configured`.
+- The attached failed curl attempts used the hostname without `https://` and therefore attempted port 80.
+
+### Remaining work
+
+- Normalize the stack output or workflow smoke test to prepend `https://` when the endpoint is a bare hostname.
+- After that fix reaches `main`, the deployment workflow should report success without recreating the already healthy service.
+
+## Turn 29
+
+### User (hnuu785) — 2026-08-16 16:55 KST
+
+> 수정해줘
+
+### Codex response and decisions
+
+- Changed the Service stack `ApiUrl` output to return a complete `https://` URL.
+- Added defensive normalization in the workflow so a pre-existing stack output containing only a hostname is also prefixed with `https://` before smoke tests.
+- Preserved the user's concurrent S3/storage changes in the same workflow and Service template.
+- Did not update the live stack or trigger a deployment; the currently running service remained healthy.
+
+### Files changed
+
+- `.github/workflows/deploy-backend.yml`
+- `infra/service.yml`
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- GitHub Actions workflow YAML parse: passed.
+- AWS CloudFormation validation for `infra/service.yml`: passed.
+- `git diff --check`: passed.
+- URL normalization cases for bare hostname, existing HTTPS, and local HTTP: passed.
+- Current endpoint through the same normalized HTTPS logic: `/health` 200 and `/ready` 200.
+
+### Remaining work
+
+- Commit the combined workflow/Service changes and merge them to `main`; the next workflow run should complete its verification step successfully.

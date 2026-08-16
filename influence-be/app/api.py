@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hmac
 import json
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Annotated, Any
 from urllib.parse import urlencode
 from uuid import uuid4
@@ -73,6 +75,7 @@ from app.schemas import (
     MetricInput,
     PackageDecisionRequest,
     PackageUpdateRequest,
+    PreparedUploadResponse,
     PublicationRequest,
     PublicationResponse,
     QualityIssueResponse,
@@ -82,13 +85,13 @@ from app.schemas import (
     StoryCardCandidate,
     StoryCardDecisionRequest,
     StoryCardResponse,
+    UploadPrepareRequest,
+    UploadPrepareResponse,
     UserResponse,
 )
 from app.storage import (
     MAX_AUDIO_BYTES,
     MAX_MEDIA_DURATION_MS,
-    MAX_PHOTO_BYTES,
-    MAX_PHOTOS,
     MAX_TEXT_CHARS,
     MAX_VIDEO_BYTES,
     build_export_zip,
@@ -97,6 +100,7 @@ from app.storage import (
     extract_video_frame,
     probe_duration_ms,
     save_upload,
+    validate_upload_batch,
 )
 
 
@@ -113,6 +117,19 @@ def _signer(request: Request) -> TokenSigner:
 
 def _provider(request: Request):
     return request.app.state.ai_provider
+
+
+def _storage(request: Request):
+    return request.app.state.storage
+
+
+@dataclass
+class MaterializedUpload:
+    filename: str
+    content_type: str
+    size: int
+    path: Path
+    pending_key: str | None = None
 
 
 async def _record_for_user(
@@ -477,6 +494,45 @@ async def disconnect_calendar(
         await session.commit()
 
 
+@router.post("/uploads/prepare", response_model=UploadPrepareResponse)
+async def prepare_uploads(
+    request: Request,
+    payload: UploadPrepareRequest,
+    user: User = Depends(current_user),
+) -> UploadPrepareResponse:
+    validate_upload_batch(
+        [(item.content_type, item.size_bytes) for item in payload.files]
+    )
+    storage = _storage(request)
+    if storage.mode == "local":
+        return UploadPrepareResponse(mode="multipart")
+
+    prepared_responses = []
+    for item in payload.files:
+        prepared = await storage.prepare_upload(
+            user.id, item.filename, item.content_type
+        )
+        upload_token = _signer(request).sign(
+            {
+                "type": "upload",
+                "user_id": user.id,
+                "key": prepared.key,
+                "filename": item.filename,
+                "content_type": item.content_type,
+                "size_bytes": item.size_bytes,
+            },
+            storage.presign_ttl_seconds + 300,
+        )
+        prepared_responses.append(
+            PreparedUploadResponse(
+                upload_url=prepared.url,
+                upload_token=upload_token,
+                headers=prepared.headers,
+            )
+        )
+    return UploadPrepareResponse(mode="s3", uploads=prepared_responses)
+
+
 @router.post("/transcribe")
 async def transcribe_answer(
     request: Request,
@@ -501,6 +557,7 @@ async def create_record(
     request: Request,
     text_input: Annotated[str, Form(alias="text")] = "",
     calendar_context_json: Annotated[str, Form()] = "[]",
+    uploaded_files_json: Annotated[str, Form()] = "[]",
     rights_confirmed: Annotated[bool, Form()] = False,
     files: list[UploadFile] = File(default=[]),
     user: User = Depends(current_user),
@@ -516,9 +573,37 @@ async def create_record(
         ]
     except (json.JSONDecodeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail="선택 일정 형식이 올바르지 않습니다.") from exc
-    if not text_input.strip() and not files and not validated_calendar:
+    try:
+        upload_tokens = json.loads(uploaded_files_json)
+        if not isinstance(upload_tokens, list) or not all(
+            isinstance(item, str) for item in upload_tokens
+        ):
+            raise ValueError
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422, detail="업로드 파일 정보가 올바르지 않습니다."
+        ) from exc
+
+    direct_uploads: list[dict[str, Any]] = []
+    for token in upload_tokens:
+        upload_payload = _signer(request).verify(token, "upload")
+        if (
+            upload_payload.get("user_id") != user.id
+            or not str(upload_payload.get("key", "")).startswith(
+                f"pending/{user.id}/"
+            )
+        ):
+            raise HTTPException(status_code=403, detail="업로드 권한이 없습니다.")
+        direct_uploads.append(upload_payload)
+
+    if direct_uploads and _storage(request).mode != "s3":
+        raise HTTPException(
+            status_code=422, detail="현재 환경에서는 직접 업로드를 사용할 수 없습니다."
+        )
+    has_media = bool(files or direct_uploads)
+    if not text_input.strip() and not has_media and not validated_calendar:
         raise HTTPException(status_code=422, detail="기록을 하나 이상 추가해 주세요.")
-    if files and not rights_confirmed:
+    if has_media and not rights_confirmed:
         raise HTTPException(
             status_code=422,
             detail="파일 사용 권한과 등장 인물 공개 동의를 확인해 주세요.",
@@ -547,30 +632,60 @@ async def create_record(
         )
         normalized_parts.append(text_input.strip())
 
-    saved_paths: list[Path] = []
-    photo_count = 0
+    materialized_uploads: list[MaterializedUpload] = []
+    stored_references: list[str] = []
     audio_duration = 0
     video_duration = 0
     audio_bytes = 0
     video_bytes = 0
     try:
+        local_directory = (
+            _settings(request).storage_path / user.id / record.id
+            if _storage(request).mode == "local"
+            else _settings(request).storage_path / "temp" / record.id
+        )
         for upload in files:
-            asset_type = classify_content_type(upload.content_type)
-            if asset_type == "photo":
-                photo_count += 1
-                if photo_count > MAX_PHOTOS:
-                    raise HTTPException(status_code=413, detail="사진은 최대 5장입니다.")
-            target, size = await save_upload(
-                upload, _settings(request).storage_path / user.id / record.id
+            content_type = upload.content_type or ""
+            filename = Path(upload.filename or "upload").name[:255]
+            target, size = await save_upload(upload, local_directory)
+            materialized_uploads.append(
+                MaterializedUpload(
+                    filename=filename,
+                    content_type=content_type,
+                    size=size,
+                    path=target,
+                )
             )
-            saved_paths.append(target)
+        for direct in direct_uploads:
+            target, size = await _storage(request).materialize_pending(
+                direct["key"],
+                int(direct["size_bytes"]),
+                direct["content_type"],
+                local_directory,
+            )
+            materialized_uploads.append(
+                MaterializedUpload(
+                    filename=Path(direct["filename"]).name[:255],
+                    content_type=direct["content_type"],
+                    size=size,
+                    path=target,
+                    pending_key=direct["key"],
+                )
+            )
+
+        validate_upload_batch(
+            [(item.content_type, item.size) for item in materialized_uploads]
+        )
+        stored_assets: list[tuple[SourceAsset, MaterializedUpload]] = []
+        for item in materialized_uploads:
+            asset_type = classify_content_type(item.content_type)
+            target = item.path
+            size = item.size
             duration_ms = (
                 await probe_duration_ms(target)
                 if asset_type in {"audio", "video"}
                 else None
             )
-            if asset_type == "photo" and size > MAX_PHOTO_BYTES:
-                raise HTTPException(status_code=413, detail="사진은 장당 10MB까지입니다.")
             if asset_type == "audio":
                 audio_bytes += size
                 audio_duration += duration_ms or 0
@@ -590,9 +705,9 @@ async def create_record(
             asset = SourceAsset(
                 record_id=record.id,
                 type=asset_type,
-                filename=Path(target).name,
-                content_type=upload.content_type,
-                storage_path=str(target),
+                filename=item.filename,
+                content_type=item.content_type,
+                storage_path=None,
                 size_bytes=size,
                 duration_ms=duration_ms,
                 rights_confirmed=True,
@@ -600,6 +715,7 @@ async def create_record(
             )
             session.add(asset)
             await session.flush()
+            stored_assets.append((asset, item))
             if asset_type in {"audio", "video"}:
                 transcription_target = target
                 extracted_audio: Path | None = None
@@ -638,9 +754,20 @@ async def create_record(
                             frame.unlink(missing_ok=True)
             elif asset_type == "photo":
                 description = await _provider(request).describe_image(
-                    target, upload.content_type or "image/jpeg"
+                    target, item.content_type
                 )
                 normalized_parts.append(f"[사진 분석: {description}]")
+
+        for asset, item in stored_assets:
+            reference = await _storage(request).store_record_file(
+                item.path,
+                user.id,
+                record.id,
+                item.content_type,
+                pending_key=item.pending_key,
+            )
+            asset.storage_path = reference
+            stored_references.append(reference)
         normalized_parts.extend(
             f"[일정: {item['title']}]" for item in validated_calendar
         )
@@ -649,9 +776,14 @@ async def create_record(
         await session.commit()
     except Exception:
         await session.rollback()
-        for path in saved_paths:
-            path.unlink(missing_ok=True)
+        for reference in stored_references:
+            await _storage(request).delete(reference)
+        for item in materialized_uploads:
+            item.path.unlink(missing_ok=True)
         raise
+    if _storage(request).mode == "s3":
+        for item in materialized_uploads:
+            item.path.unlink(missing_ok=True)
     await session.refresh(record)
     return await _serialize_record(session, record)
 
@@ -668,6 +800,7 @@ async def get_record(
 
 @router.delete("/records/{record_id}", status_code=204)
 async def delete_record(
+    request: Request,
     record_id: str,
     user: User = Depends(current_user),
     session: AsyncSession = Depends(session_dependency),
@@ -684,8 +817,7 @@ async def delete_record(
         )
     ).all()
     for asset in assets:
-        if asset.storage_path:
-            Path(asset.storage_path).unlink(missing_ok=True)
+        await _storage(request).delete(asset.storage_path)
     for export in exports:
         Path(export.storage_path).unlink(missing_ok=True)
     await session.delete(record)
@@ -1147,11 +1279,6 @@ async def export_packages(
             select(SourceAsset).where(SourceAsset.record_id == record.id)
         )
     ).all()
-    source_paths = [
-        (Path(asset.storage_path), asset.filename or Path(asset.storage_path).name)
-        for asset in assets
-        if asset.storage_path
-    ]
     export_id = str(uuid4())
     target = (
         _settings(request).storage_path
@@ -1159,7 +1286,20 @@ async def export_packages(
         / record.id
         / f"storilog-{export_id}.zip"
     )
-    build_export_zip(target, serialized, source_paths)
+    temporary_root = _settings(request).storage_path / "temp"
+    temporary_root.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(dir=temporary_root) as temporary_directory:
+        source_paths = []
+        for asset in assets:
+            if not asset.storage_path:
+                continue
+            source_path = await _storage(request).materialize(
+                asset.storage_path, Path(temporary_directory)
+            )
+            source_paths.append(
+                (source_path, asset.filename or source_path.name)
+            )
+        build_export_zip(target, serialized, source_paths)
     session.add(
         ExportPackage(
             id=export_id,
