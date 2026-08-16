@@ -2,6 +2,8 @@
 
 Next.js 프론트엔드는 로컬에서 실행하고, FastAPI·PostgreSQL·Redis는 Docker Compose로 실행하는 개발 환경입니다.
 
+> 심사용 개발 과정: [Codex Build Log — `gamzerA`](CODEX_BUILD_LOG.md) · [HumanProof 디자인 원문 프롬프트](docs/prompts/humanproof-design-prompt.md)
+
 ## 사전 준비
 
 - Node.js 20.9 이상
