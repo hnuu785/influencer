@@ -92,6 +92,13 @@ Resources:
                   - s3:*
                   - secretsmanager:*
                 Resource: "*"
+              - Sid: CreateRdsServiceLinkedRole
+                Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/rds.amazonaws.com/AWSServiceRoleForRDS
+                Condition:
+                  StringEquals:
+                    iam:AWSServiceName: rds.amazonaws.com
 
   GitHubDeployRole:
     Type: AWS::IAM::Role
