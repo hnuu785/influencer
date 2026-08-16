@@ -523,3 +523,50 @@
 
 - Complete GitHub Actions variables/environment setup and obtain one successful backend deployment.
 - Connect Amplify before expecting frontend-only pushes to deploy publicly.
+
+## Turn 14
+
+### User (hnuu785) — 2026-08-16 13:29 KST
+
+> 1m 33s
+> Run aws-actions/configure-aws-credentials@v6.2.3
+> Retry validateCredentials: attempt 1 of 12 failed: Credentials could not be loaded, please check your action inputs: Could not load credentials from any providers. Retrying after 9ms.
+> Retry validateCredentials: attempt 2 of 12 failed: Credentials could not be loaded, please check your action inputs: Could not load credentials from any providers. Retrying after 49ms.
+> Retry validateCredentials: attempt 3 of 12 failed: Credentials could not be loaded, please check your action inputs: Could not load credentials from any providers. Retrying after 121ms.
+> Retry validateCredentials: attempt 4 of 12 failed: Credentials could not be loaded, please check your action inputs: Could not load credentials from any providers. Retrying after 179ms.
+> Retry validateCredentials: attempt 5 of 12 failed: Credentials could not be loaded, please check your action inputs: Could not load credentials from any providers. Retrying after 27ms.
+> Retry validateCredentials: attempt 6 of 12 failed: Credentials could not be loaded, please check your action inputs: Could not load credentials from any providers. Retrying after 241ms.
+> Retry validateCredentials: attempt 7 of 12 failed: Credentials could not be loaded, please check your action inputs: Could not load credentials from any providers. Retrying after 2357ms.
+> Retry validateCredentials: attempt 8 of 12 failed: Credentials could not be loaded, please check your action inputs: Could not load credentials from any providers. Retrying after 2133ms.
+> Retry validateCredentials: attempt 9 of 12 failed: Credentials could not be loaded, please check your action inputs: Could not load credentials from any providers. Retrying after 8188ms.
+> Retry validateCredentials: attempt 10 of 12 failed: Credentials could not be loaded, please check your action inputs: Could not load credentials from any providers. Retrying after 12799ms.
+> Retry validateCredentials: attempt 11 of 12 failed: Credentials could not be loaded, please check your action inputs: Could not load credentials from any providers. Retrying after 8622ms.
+> Retry validateCredentials: attempt 12 of 12 failed: Credentials could not be loaded, please check your action inputs: Could not load credentials from any providers. Retrying after 57797ms.
+> Retry validateCredentials: reached max retries (12); giving up.
+> Error: Credentials could not be loaded, please check your action inputs: Could not load credentials from any providers
+>
+>
+> 배포 실패했는데 왜 실패했어?
+
+### Codex response and decisions
+
+- Diagnosed the failure as occurring before infrastructure deployment, while the GitHub action attempted to obtain short-lived AWS credentials.
+- Verified that the AWS OIDC provider, deployment role, and `main`-branch trust policy are correct.
+- Identified the most likely cause as `AWS_DEPLOY_ROLE_ARN` being unavailable through GitHub's `vars` context, commonly because the value was not added, was added under Secrets instead of Variables, or its name was entered incorrectly.
+- Directed the user to verify all four exact variable names and rerun the workflow from `main`.
+
+### Files changed
+
+- `chat-log/2026-08-16-1155-development-environment.md`
+
+### Verification
+
+- `influence-github-deploy` exists and trusts the GitHub OIDC provider.
+- Its subject condition is exactly `repo:hnuu785/influencer:ref:refs/heads/main`, with audience `sts.amazonaws.com`.
+- The workflow reads `role-to-assume` from `vars.AWS_DEPLOY_ROLE_ARN` and account restriction from `vars.AWS_ACCOUNT_ID`.
+- No platform or service stack was created by the failed run.
+
+### Remaining work
+
+- Correct the GitHub Actions Variables configuration and rerun `Deploy backend` from `main`.
+- If credential assumption then returns an STS authorization error, inspect the exact new error separately; it would be a different failure stage.
