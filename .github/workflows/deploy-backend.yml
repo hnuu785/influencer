@@ -94,6 +94,7 @@ jobs:
             echo "task_execution_role_arn=$(stack_output TaskExecutionRoleArn)"
             echo "task_role_arn=$(stack_output TaskRoleArn)"
             echo "infrastructure_role_arn=$(stack_output ExpressInfrastructureRoleArn)"
+            echo "app_auth_secret_arn=$(stack_output AppAuthSecretArn)"
           } >> "$GITHUB_OUTPUT"
 
       - name: Log in to Amazon ECR
@@ -140,6 +141,7 @@ jobs:
           TASK_EXECUTION_ROLE_ARN: ${{ steps.platform.outputs.task_execution_role_arn }}
           TASK_ROLE_ARN: ${{ steps.platform.outputs.task_role_arn }}
           INFRASTRUCTURE_ROLE_ARN: ${{ steps.platform.outputs.infrastructure_role_arn }}
+          APP_AUTH_SECRET_ARN: ${{ steps.platform.outputs.app_auth_secret_arn }}
         run: |
           cors_origins="${FRONTEND_ORIGIN:-http://localhost:3001}"
           aws cloudformation deploy \
@@ -161,6 +163,7 @@ jobs:
               "TaskExecutionRoleArn=$TASK_EXECUTION_ROLE_ARN" \
               "TaskRoleArn=$TASK_ROLE_ARN" \
               "ExpressInfrastructureRoleArn=$INFRASTRUCTURE_ROLE_ARN" \
+              "AppAuthSecretArn=$APP_AUTH_SECRET_ARN" \
               "CorsOrigins=$cors_origins"
 
       - name: Verify deployed image and endpoints
