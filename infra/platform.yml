@@ -289,6 +289,17 @@ Resources:
         - Key: Project
           Value: influence
 
+  AppAuthSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub influence/${EnvironmentName}/app-auth
+      Description: JSON secret with GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and SESSION_SECRET.
+      Tags:
+        - Key: Project
+          Value: influence
+
   Cluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -321,6 +332,13 @@ Resources:
               - Effect: Allow
                 Action: secretsmanager:GetSecretValue
                 Resource: !GetAtt Database.MasterUserSecret.SecretArn
+        - PolicyName: ReadAppAuthSecret
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref AppAuthSecret
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -387,3 +405,5 @@ Outputs:
     Value: !GetAtt ExpressInfrastructureRole.Arn
   RunpodApiKeySecretArn:
     Value: !Ref RunpodApiKeySecret
+  AppAuthSecretArn:
+    Value: !Ref AppAuthSecret

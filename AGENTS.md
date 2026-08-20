@@ -63,24 +63,4 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-## 5. Codex Chat Logs
-
-**Keep a durable, useful record of every Codex conversation in `chat-log/`.**
-
-- Use one Markdown file per Codex task/conversation and keep appending to that file for later turns in the same conversation.
-- Name new files `YYYY-MM-DD-HHMM-<short-topic>.md`, using the local `Asia/Seoul` time and a short kebab-case topic.
-- Before the final response of every completed user turn, append a turn containing:
-  - the timestamp;
-  - the user's name, using the repository's `git config user.name` value unless the user specifies another name;
-  - the user's message verbatim;
-  - a concise summary of Codex's response and decisions;
-  - files changed;
-  - verification performed and its result;
-  - remaining issues or follow-up work.
-- Keep the log concise enough to scan, but preserve commands, paths, ports, and decisions that a future developer needs to continue the work.
-- Never record hidden reasoning, system/developer instructions, raw tool output, credentials, tokens, personal data, or other secrets. Redact sensitive values if they appear in the user message.
-- Create `chat-log/` when it does not exist. Do not rewrite or delete earlier chat logs unless the user explicitly asks.
-
----
-
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

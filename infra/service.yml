@@ -28,6 +28,15 @@ Parameters:
   CorsOrigins:
     Type: String
     Default: http://localhost:3001
+  FrontendUrl:
+    Type: String
+    Default: https://main.dt70s26a0ny4l.amplifyapp.com
+  PublicApiUrl:
+    Type: String
+    Default: https://in-799d442b12d847af94135c68132c9e3b.ecs.ap-northeast-2.on.aws
+  AppAuthSecretArn:
+    Type: String
+    Description: Secrets Manager ARN with Google OAuth and session values.
 
 Resources:
   BackendLogGroup:
@@ -63,6 +72,12 @@ Resources:
           LogGroup: !Ref BackendLogGroup
           LogStreamPrefix: backend
         Environment:
+          - Name: APP_ENV
+            Value: production
+          - Name: APP_FRONTEND_URL
+            Value: !Ref FrontendUrl
+          - Name: APP_PUBLIC_API_URL
+            Value: !Ref PublicApiUrl
           - Name: DB_HOST
             Value: !Ref DatabaseHost
           - Name: DB_PORT
@@ -80,6 +95,12 @@ Resources:
           - Name: S3_REGION
             Value: !Ref AWS::Region
         Secrets:
+          - Name: GOOGLE_CLIENT_ID
+            ValueFrom: !Sub "${AppAuthSecretArn}:GOOGLE_CLIENT_ID::"
+          - Name: GOOGLE_CLIENT_SECRET
+            ValueFrom: !Sub "${AppAuthSecretArn}:GOOGLE_CLIENT_SECRET::"
+          - Name: SESSION_SECRET
+            ValueFrom: !Sub "${AppAuthSecretArn}:SESSION_SECRET::"
           - Name: DB_USER
             ValueFrom: !Sub "${DatabaseSecretArn}:username::"
           - Name: DB_PASSWORD

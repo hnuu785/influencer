@@ -212,7 +212,7 @@ function StepRail({
       <div className="rail-user">
         <div className="avatar">{user.name.slice(0, 1)}</div>
         <p><strong>{user.name}</strong><span>{user.ai_mode === "openai" ? "AI 연결됨" : "체험 모드"}</span></p>
-        <button onClick={onLogout} aria-label="로그아웃">나가기</button>
+        <button type="button" onClick={onLogout}>로그아웃</button>
       </div>
     </aside>
   );
@@ -990,7 +990,13 @@ export default function Home() {
     <div className="app">
       <StepRail user={user} step={step} onLogout={logout} />
       <main className="main-stage">
-        <header className="mobile-header"><div className="logo"><span>S</span> 스토리로그</div><small>{currentTitle}</small></header>
+        <header className="mobile-header">
+          <div className="logo"><span>S</span> 스토리로그</div>
+          <div className="mobile-header-actions">
+            <small>{currentTitle}</small>
+            <button type="button" onClick={logout}>로그아웃</button>
+          </div>
+        </header>
         {step === "capture" && (
           <CaptureStep
             setBusy={setBusy}
