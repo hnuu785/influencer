@@ -75,6 +75,8 @@ In repository **Settings → Secrets and variables → Actions → Variables**, 
 | `AWS_ACCOUNT_ID` | The 12-digit AWS account ID |
 | `AWS_DEPLOY_ROLE_ARN` | Bootstrap output `GitHubDeployRoleArn` |
 | `CFN_EXECUTION_ROLE_ARN` | Bootstrap output `CloudFormationExecutionRoleArn` |
+| `FRONTEND_ORIGIN` | Public frontend origin, such as `https://app.example.com` |
+| `PUBLIC_API_URL` | Optional OAuth/API public origin. Defaults to `FRONTEND_ORIGIN` for same-origin proxying. |
 
 The workflow intentionally does not reference a GitHub Environment. This keeps
 the OIDC subject branch-scoped so the AWS trust policy can restrict access to the
@@ -103,7 +105,9 @@ aws cloudformation describe-stacks \
 2. Select branch `main`, enable **My app is a monorepo**, and enter
    `influence-fe` as the app root. Amplify sets `AMPLIFY_MONOREPO_APP_ROOT` and
    uses the root `amplify.yml` to build with Node.js 22.
-3. Add `NEXT_PUBLIC_API_URL` with the ECS API URL, then deploy.
+3. Add `API_PROXY_TARGET` with the ECS API URL, then deploy. Do not expose this
+   value as a `NEXT_PUBLIC_*` browser variable; Next.js proxies `/api/*` on the
+   server.
 4. Copy the exact generated origin, such as
    `https://main.example.amplifyapp.com` (without a trailing slash).
 5. Add that value as the GitHub repository variable `FRONTEND_ORIGIN` and rerun
@@ -111,6 +115,30 @@ aws cloudformation describe-stacks \
 
 Until step 5, CORS uses `http://localhost:3001` so the backend can be bootstrapped
 before Amplify has assigned a domain.
+
+## 4. Use the Amplify domain for both frontend and API
+
+This is the default production setup and does not require purchasing a domain.
+The browser calls `/api/*` on the Amplify origin, and the Next.js rewrite proxies
+those requests to the ECS Express endpoint. OAuth callbacks therefore set a
+first-party session cookie on the Amplify domain.
+
+For this deployment, use these values:
+
+| Location | Name | Value |
+| --- | --- | --- |
+| Amplify environment variable | `API_PROXY_TARGET` | `https://in-799d442b12d847af94135c68132c9e3b.ecs.ap-northeast-2.on.aws` |
+| GitHub Actions variable | `FRONTEND_ORIGIN` | `https://main.dt70s26a0ny4l.amplifyapp.com` |
+| GitHub Actions variable | `PUBLIC_API_URL` | Leave unset; it defaults to `FRONTEND_ORIGIN` |
+
+Remove the old Amplify `NEXT_PUBLIC_API_URL` variable so browser requests remain
+same-origin. In the Google OAuth web client, register these exact redirect URIs:
+
+- `https://main.dt70s26a0ny4l.amplifyapp.com/api/auth/google/callback`
+- `https://main.dt70s26a0ny4l.amplifyapp.com/api/calendar/callback`
+
+After the redirect URIs are registered, deploy the frontend and backend. Verify
+that the browser requests `/api/me` on the Amplify origin and receives `200`.
 
 ## Operations
 

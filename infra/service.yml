@@ -31,9 +31,11 @@ Parameters:
   FrontendUrl:
     Type: String
     Default: https://main.dt70s26a0ny4l.amplifyapp.com
+    Description: Public frontend origin without a trailing slash.
   PublicApiUrl:
     Type: String
     Default: https://in-799d442b12d847af94135c68132c9e3b.ecs.ap-northeast-2.on.aws
+    Description: Public API origin used for OAuth callbacks, without a trailing slash.
   AppAuthSecretArn:
     Type: String
     Description: Secrets Manager ARN with Google OAuth and session values.

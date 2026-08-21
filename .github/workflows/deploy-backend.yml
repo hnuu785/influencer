@@ -22,6 +22,7 @@ env:
   PLATFORM_STACK: influence-platform-prod
   SERVICE_STACK: influence-service-prod
   FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
+  PUBLIC_API_URL: ${{ vars.PUBLIC_API_URL }}
 
 jobs:
   deploy:
@@ -144,6 +145,28 @@ jobs:
           APP_AUTH_SECRET_ARN: ${{ steps.platform.outputs.app_auth_secret_arn }}
         run: |
           cors_origins="${FRONTEND_ORIGIN:-http://localhost:3001}"
+          public_api_url="${PUBLIC_API_URL:-$FRONTEND_ORIGIN}"
+          parameters=(
+            "ImageUri=$IMAGE_URI"
+            "ClusterName=$CLUSTER_NAME"
+            "PublicSubnetAId=$SUBNET_A"
+            "PublicSubnetBId=$SUBNET_B"
+            "EcsTaskSecurityGroupId=$ECS_SECURITY_GROUP"
+            "DatabaseHost=$DATABASE_HOST"
+            "DatabaseSecretArn=$DATABASE_SECRET_ARN"
+            "ArtifactBucketName=$ARTIFACT_BUCKET"
+            "TaskExecutionRoleArn=$TASK_EXECUTION_ROLE_ARN"
+            "TaskRoleArn=$TASK_ROLE_ARN"
+            "ExpressInfrastructureRoleArn=$INFRASTRUCTURE_ROLE_ARN"
+            "AppAuthSecretArn=$APP_AUTH_SECRET_ARN"
+            "CorsOrigins=$cors_origins"
+          )
+          if [[ -n "$FRONTEND_ORIGIN" ]]; then
+            parameters+=("FrontendUrl=$FRONTEND_ORIGIN")
+          fi
+          if [[ -n "$public_api_url" ]]; then
+            parameters+=("PublicApiUrl=$public_api_url")
+          fi
           aws cloudformation deploy \
             --region "$AWS_REGION" \
             --stack-name "$SERVICE_STACK" \
@@ -151,20 +174,7 @@ jobs:
             --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              "ImageUri=$IMAGE_URI" \
-              "ClusterName=$CLUSTER_NAME" \
-              "PublicSubnetAId=$SUBNET_A" \
-              "PublicSubnetBId=$SUBNET_B" \
-              "EcsTaskSecurityGroupId=$ECS_SECURITY_GROUP" \
-              "DatabaseHost=$DATABASE_HOST" \
-              "DatabaseSecretArn=$DATABASE_SECRET_ARN" \
-              "ArtifactBucketName=$ARTIFACT_BUCKET" \
-              "TaskExecutionRoleArn=$TASK_EXECUTION_ROLE_ARN" \
-              "TaskRoleArn=$TASK_ROLE_ARN" \
-              "ExpressInfrastructureRoleArn=$INFRASTRUCTURE_ROLE_ARN" \
-              "AppAuthSecretArn=$APP_AUTH_SECRET_ARN" \
-              "CorsOrigins=$cors_origins"
+            --parameter-overrides "${parameters[@]}"
 
       - name: Verify deployed image and endpoints
         env:
