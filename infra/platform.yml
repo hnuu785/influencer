@@ -306,7 +306,7 @@ Resources:
       ClusterName: !Sub influence-${EnvironmentName}
       ClusterSettings:
         - Name: containerInsights
-          Value: enabled
+          Value: disabled
       Tags:
         - Key: Project
           Value: influence
